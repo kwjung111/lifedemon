@@ -50,7 +50,7 @@ export const reminderBotModule = {
     if (/^\/reminders(?:@\w+)?$/i.test(text) || /^알림\s*(?:목록|보여줘)$/i.test(text)) {
       const reminders = listReminders();
       await sendMessage(reminders.length
-        ? `🔔 예정 알림\n\n${reminders.map((item) => `${item.status === "approved" ? "✅" : "⏳"} ${item.id}. ${formatReminderTime(item.due_at)}\n${item.title}`).join("\n\n")}`
+        ? `🔔 예정 알림\n\n${reminders.map((item, index) => `${item.status === "approved" ? "✅" : "⏳"} ${index + 1}. ${formatReminderTime(item.due_at)}\n${item.title}`).join("\n\n")}`
         : "예정된 알림이 없습니다.");
       return true;
     }
