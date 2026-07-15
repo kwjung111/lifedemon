@@ -9,6 +9,8 @@
     "telegram:menu": "node --env-file=.env src/init-bot.mjs",
     "reminders": "node --env-file=.env src/reminder-worker.mjs",
     "housing:daily": "node --env-file=.env src/daily.mjs",
+    "housing:queue": "node src/admin/queue-active-reviews.mjs",
+    "housing:review-one": "node src/admin/run-one-review.mjs",
     "housing:diagnose": "node src/diagnose.mjs",
     "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/reminder-worker.mjs"
   },

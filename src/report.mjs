@@ -22,7 +22,7 @@ export async function sendStatus() {
   return sendMessage(`📌 지원 진행 중\n\n${lines.join("\n\n")}`);
 }
 
-export async function sendDailyReport(summary = []) {
+export async function sendDailyReport(summary = [], reviewSummary = []) {
   const notices = activeNotices();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
@@ -31,6 +31,7 @@ export async function sendDailyReport(summary = []) {
   const seen = new Set();
   const candidates = notices.filter((notice) => {
     if (notice.application_status || !["likely", "possible"].includes(notice.verdict)) return false;
+    if (notice.ai_eligibility === "no" || notice.ai_status === "closed") return false;
     if (notice.apply_end && notice.apply_end < today) return false;
     const key = notice.title.replace(/\s*\d+일전\s*$/, "").replace(/\s+/g, " ").trim();
     if (seen.has(key)) return false;
@@ -46,6 +47,9 @@ export async function sendDailyReport(summary = []) {
     `🏠 서울 1인 청년 주거공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     `수집: ${counts}`,
     `후보 ${candidates.length}건 · 지원 진행 ${applied.length}건`,
+    reviewSummary.length
+      ? `AI 검토 ${reviewSummary.filter((item) => !item.error).length}건 · 오류 ${reviewSummary.filter((item) => item.error).length}건`
+      : "변경 없음",
   ];
 
   if (applied.length) {
@@ -59,11 +63,16 @@ export async function sendDailyReport(summary = []) {
   lines.push("", candidates.length ? "🔎 오늘 확인할 공고" : "오늘 새로 확인할 공고가 없습니다.");
   candidates.forEach((notice, index) => {
     const reason = JSON.parse(notice.reasons_json || "[]")[0];
-    lines.push("", `${index + 1}. ${verdictLabel[notice.verdict] || "🔎"} [${notice.source}]`);
+    const ai = notice.ai_result_json ? JSON.parse(notice.ai_result_json) : null;
+    const label = ai
+      ? `${notice.ai_eligibility === "yes" ? "🤖 추천" : "🤖 확인 필요"} ${notice.ai_score}점`
+      : verdictLabel[notice.verdict] || "🔎";
+    lines.push("", `${index + 1}. ${label} [${notice.source}]`);
     lines.push(notice.title.slice(0, 100));
-    lines.push(`${notice.apply_end ? `마감 ${notice.apply_end}` : "마감일 원문확인"}${reason ? ` · ${reason}` : ""}`);
+    lines.push(`${notice.apply_end ? `마감 ${notice.apply_end}` : "마감일 확인 필요"} · ${ai?.summary || reason || "AI 검토 대기"}`);
+    if (ai?.costs && ai.costs !== "확인 필요") lines.push(`비용: ${ai.costs.slice(0, 100)}`);
   });
-  lines.push("", "※ 1차 선별 결과입니다. 소득·자산·무주택 세부요건은 원문 확인 필요.");
+  lines.push("", "※ AI는 공식 자료 근거만 사용하며, 개인 소득·자산 정보가 없으면 ‘확인 필요’로 표시합니다.");
   lines.push("답장 예: ‘3번 넣었어’, ‘3번 2026-08-10 발표’");
 
   const keyboard = candidates.map((notice, index) => [
