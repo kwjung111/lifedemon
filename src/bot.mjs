@@ -1,7 +1,9 @@
 import { createBotRuntime } from "./core/bot-runtime.mjs";
 import { getPlatformSetting, setPlatformSetting } from "./core/state.mjs";
-import { botModules } from "./modules.mjs";
+import { botModules, syncTelegramMenu } from "./modules.mjs";
 import { chatId, sendMessage, telegram } from "./telegram.mjs";
+
+await syncTelegramMenu(telegram, chatId);
 
 const bot = createBotRuntime({
   telegram,

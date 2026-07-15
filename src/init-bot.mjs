@@ -1,11 +1,7 @@
-import { telegramMenuCommands } from "./modules.mjs";
+import { syncTelegramMenu } from "./modules.mjs";
 import { chatId, telegram } from "./telegram.mjs";
 
-const commands = telegramMenuCommands();
-await telegram("setMyCommands", {
-  scope: { type: "chat", chat_id: chatId },
-  commands,
-});
+await syncTelegramMenu(telegram, chatId);
 
 const registered = await telegram("getMyCommands", {
   scope: { type: "chat", chat_id: chatId },

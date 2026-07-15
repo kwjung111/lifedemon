@@ -15,3 +15,12 @@ export function telegramMenuCommands() {
     return true;
   });
 }
+
+export async function syncTelegramMenu(telegram, chatId) {
+  const commands = telegramMenuCommands();
+  await telegram("setMyCommands", {
+    scope: { type: "chat", chat_id: chatId },
+    commands,
+  });
+  return commands;
+}
