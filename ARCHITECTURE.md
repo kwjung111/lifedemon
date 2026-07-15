@@ -16,6 +16,8 @@ Each app owns its sources, classification rules, database tables, digest formatt
 
 Housing has a version-controlled base instruction in `src/apps/housing/instructions.mjs`. User rules are stored as structured records in `housing.sqlite`; they are never treated as executable code. Only supported rule types affect collection, which keeps Telegram input from changing arbitrary server behavior.
 
+Housing discovery is a thin completeness sensor. New or changed likely/possible notices enter `review_queue`. The AI reviewer reads untrusted official content as evidence, may request up to two follow-ups, and the orchestrator fulfills those requests only through an HTTPS official-domain allowlist. Missing critical fields force a title-based official detail search even when the model does not request one. Structured reviews and content hashes are retained in SQLite; unchanged notices do not consume another AI call.
+
 ## Adding another monitor
 
 An app module exposes:
@@ -31,3 +33,7 @@ Daily collectors remain separate systemd one-shot services and timers. The alway
 
 Approved reminders are stored in `platform.sqlite` and delivered by the independent `monitor-reminder.service`. App modules propose reminders; they do not schedule or send due events themselves.
 Reminder links are optional. Domain events may attach a resolver and structured metadata; the worker resolves an official result link at delivery time. Generic events can have no link at all.
+
+## Codex authentication fallback
+
+`codex-auto` runs new non-interactive tasks with the ChatGPT-authenticated Codex home first. It retries with the separately stored API-authenticated home only for recognizable usage-limit, rate-limit, quota, or HTTP 429 failures, and sends a Telegram notice when it switches. Other failures are returned unchanged. `codex-api` explicitly opens the API-authenticated profile. Interactive sessions are not switched mid-turn.
