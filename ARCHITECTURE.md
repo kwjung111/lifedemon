@@ -1,0 +1,33 @@
+# Life Daemon architecture
+
+Life Daemon is a personal automation platform, not a single-purpose housing bot.
+
+## Boundaries
+
+- `src/core/`: Telegram polling, authorization, routing, retries, and other shared runtime concerns.
+- `src/apps/housing/`: Housing-specific commands and interactions.
+- `src/apps/jobs/`: Future job-notice collectors, filters, reports, and interaction state.
+- `src/apps/reminders/`: Global event proposals, approval, listing, and delivery shared by every app.
+- `src/telegram.mjs`: Shared Telegram client. It has no housing or jobs business rules.
+- `src/bot.mjs`: Composition root. It registers enabled app modules with the shared runtime.
+- `data/platform.sqlite`: Shared gateway checkpoints only; app data stays in app-owned databases.
+
+Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
+
+Housing has a version-controlled base instruction in `src/apps/housing/instructions.mjs`. User rules are stored as structured records in `housing.sqlite`; they are never treated as executable code. Only supported rule types affect collection, which keeps Telegram input from changing arbitrary server behavior.
+
+## Adding another monitor
+
+An app module exposes:
+
+- `id` and `help`
+- `canHandleCallback(query)`
+- `handleCallback(query)`
+- `handleMessage(message)` returning whether it handled the message
+
+Register the module in `src/bot.mjs`. A separate Telegram bot can use the same module with a different composition root and environment file; no collector or classification code needs to be copied.
+
+Daily collectors remain separate systemd one-shot services and timers. The always-running Telegram gateway handles only interactions, so a slow or failed crawl cannot stop the bot.
+
+Approved reminders are stored in `platform.sqlite` and delivered by the independent `monitor-reminder.service`. App modules propose reminders; they do not schedule or send due events themselves.
+Reminder links are optional. Domain events may attach a resolver and structured metadata; the worker resolves an official result link at delivery time. Generic events can have no link at all.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run housing notice monitor weekdays at 09:00 KST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:00:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=0
+Unit=housing-daily.service
+
+[Install]
+WantedBy=timers.target
