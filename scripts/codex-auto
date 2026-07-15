@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -u
+
+CODEX_BIN="/home/ubuntu/.local/bin/codex"
+PRIMARY_HOME="/home/ubuntu/.codex"
+API_HOME="/home/ubuntu/.codex-api"
+API_ENV="/home/ubuntu/.config/monitor-platform/openai-api.env"
+API_ENABLED="/home/ubuntu/.config/monitor-platform/openai-api.enabled"
+TELEGRAM_ENV="/home/ubuntu/.config/monitor-platform/telegram.env"
+NOTIFY_SCRIPT="/data/crawler/scripts/telegram-notify.mjs"
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+stdout_file="$tmp_dir/stdout"
+stderr_file="$tmp_dir/stderr"
+stdin_file="$tmp_dir/stdin"
+
+if [[ ! -t 0 && $# -eq 0 ]]; then
+  cat > "$stdin_file"
+fi
+
+run_codex() {
+  local home="$1"
+  shift
+  if [[ -s "$stdin_file" ]]; then
+    CODEX_HOME="$home" "$CODEX_BIN" exec --skip-git-repo-check "$@" < "$stdin_file"
+  else
+    CODEX_HOME="$home" "$CODEX_BIN" exec --skip-git-repo-check "$@" < /dev/null
+  fi
+}
+
+run_api() {
+  if [[ ! -f "$API_ENABLED" ]]; then
+    node --env-file="$TELEGRAM_ENV" "$NOTIFY_SCRIPT" \
+      "⛔ Codex API 대체 키가 유효하지 않아 자동 전환하지 못했습니다. 새 API 키가 필요합니다." >/dev/null 2>&1 || true
+    return 78
+  fi
+  set -a
+  # shellcheck disable=SC1090
+  source "$API_ENV"
+  set +a
+  run_codex "$API_HOME" "$@"
+}
+
+if [[ "${CODEX_FORCE_API:-0}" == "1" ]]; then
+  run_api "$@"
+  exit $?
+fi
+
+run_codex "$PRIMARY_HOME" "$@" > >(tee "$stdout_file") 2> >(tee "$stderr_file" >&2)
+status=$?
+if [[ $status -eq 0 ]]; then
+  exit 0
+fi
+
+if grep -Eiq 'usage.?limit|rate.?limit|rate_limit|quota|insufficient_quota|credit(s)?.*(exhaust|limit)|too many requests|HTTP[^0-9]*429' "$stdout_file" "$stderr_file"; then
+  node --env-file="$TELEGRAM_ENV" "$NOTIFY_SCRIPT" \
+    "⚠️ ChatGPT Codex 사용 한도를 감지해 이번 작업을 API 과금 모드로 재시도합니다." >/dev/null 2>&1 || true
+  run_api "$@"
+  exit $?
+fi
+
+exit "$status"

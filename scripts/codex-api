@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -u
+
+set -a
+# shellcheck disable=SC1091
+source /home/ubuntu/.config/monitor-platform/openai-api.env
+set +a
+export CODEX_HOME=/home/ubuntu/.codex-api
+exec /home/ubuntu/.local/bin/codex "$@"
