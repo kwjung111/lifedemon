@@ -50,6 +50,10 @@ npm run housing:daily
 
 자세한 설계는 [ARCHITECTURE.md](./ARCHITECTURE.md)를 참고하세요.
 
+## Development conventions
+
+버전은 Semantic Versioning을 사용하고, 커밋 메시지는 Conventional Commits 형식을 따릅니다. 자세한 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 참고하세요.
+
 ## Security
 
 - 봇은 설정된 `TELEGRAM_CHAT_ID` 한 명의 메시지만 처리합니다.
