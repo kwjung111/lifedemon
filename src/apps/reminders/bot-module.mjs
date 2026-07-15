@@ -12,6 +12,10 @@ function parseCreate(text) {
 export const reminderBotModule = {
   id: "reminders",
   help: "🔔 전역 알림\n/reminders : 예정 알림 목록\n/remind 2026-07-20 16:00 서류 발표 [| 선택 링크]",
+  commands: [
+    { command: "reminders", description: "예정된 전역 알림 보기" },
+    { command: "remind", description: "새 전역 알림 등록" },
+  ],
 
   canHandleCallback(query) {
     return String(query.data || "").startsWith("r:");

@@ -1,11 +1,12 @@
 {
   "name": "lifedemon",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Self-hosted personal automation daemon for monitoring, reminders, and life operations.",
   "private": true,
   "type": "module",
   "scripts": {
     "bot": "node --env-file=.env src/bot.mjs",
+    "telegram:menu": "node --env-file=.env src/init-bot.mjs",
     "reminders": "node --env-file=.env src/reminder-worker.mjs",
     "housing:daily": "node --env-file=.env src/daily.mjs",
     "housing:diagnose": "node src/diagnose.mjs",

@@ -29,6 +29,12 @@ function callbackParts(data) {
 export const housingBotModule = {
   id: "housing",
   help: "🏠 주거 공고\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n/housing_status : 지원 진행 현황\n/instructions : 기본 지침\n/rules : 추가 지침\n예: ‘민간임대는 앞으로 제외해’",
+  commands: [
+    { command: "status", description: "지원 진행 중인 주택 공고 보기" },
+    { command: "housing_status", description: "주택 지원 진행 현황 보기" },
+    { command: "instructions", description: "주택 공고 기본 지침 보기" },
+    { command: "rules", description: "주택 공고 추가 지침 보기" },
+  ],
 
   canHandleCallback(query) {
     const data = String(query.data || "");
