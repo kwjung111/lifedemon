@@ -6,6 +6,8 @@ import { sendMessage } from "../../telegram.mjs";
 const sourceLabel = { remember: "리멤버", wanted: "원티드", jobkorea: "잡코리아" };
 const telegramLimit = 4000;
 function assessmentFor(row) { try { return JSON.parse(row.result_json); } catch { return {}; } }
+const escapeHtml = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const link = (url) => `<a href="${escapeHtml(url)}">링크</a>`;
 
 export function formatJobReportPages(collection = [], { limit = 100 } = {}) {
   const profile = loadJobProfile();
@@ -24,7 +26,7 @@ export function formatJobReportPages(collection = [], { limit = 100 } = {}) {
   const entries = summary.selected.map((row, index) => {
     const result = assessmentFor(row);
     return ["", `${index + 1}. ${row.decision === "pass" ? "✅ 적합" : "⚠️ 확인"} · ${sourceLabel[row.source] || row.source}`,
-      `${row.company} — ${row.title}`.slice(0, 220), result.summary ? String(result.summary).slice(0, 260) : null, row.url].filter(Boolean).join("\n");
+      escapeHtml(`${row.company} — ${row.title}`.slice(0, 220)), result.summary ? escapeHtml(String(result.summary).slice(0, 260)) : null, link(row.url)].filter(Boolean).join("\n");
   });
   if (summary.failures.length) header.push("", `필터 오류 ${summary.failures.length}건: ${summary.failures[0].slice(0, 140)}`);
   const pages = [header.join("\n")];
@@ -39,6 +41,6 @@ export function formatJobReportPages(collection = [], { limit = 100 } = {}) {
 export function formatJobReport(collection = [], options = {}) { return formatJobReportPages(collection, options)[0]; }
 export async function sendJobReport(collection = [], options = {}) {
   const sent = [];
-  for (const page of formatJobReportPages(collection, options)) sent.push(await sendMessage(page));
+  for (const page of formatJobReportPages(collection, options)) sent.push(await sendMessage(page, { parse_mode: "HTML" }));
   return sent;
 }
