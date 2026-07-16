@@ -13,6 +13,7 @@
     "housing:diagnose": "node src/diagnose.mjs",
     "jobs:collect": "node src/admin/job-collect.mjs",
     "jobs:filter": "node src/admin/job-filter.mjs",
+    "jobs:verify-companies": "node src/admin/job-verify-companies.mjs",
     "jobs:daily": "node src/jobs-daily.mjs",
     "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/jobs-daily.mjs"
   },
