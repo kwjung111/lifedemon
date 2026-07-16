@@ -58,7 +58,7 @@ ${HOUSING_BASE_INSTRUCTION}
 
 USER_RULES: ${JSON.stringify(rules)}
 USER_PROFILE: ${JSON.stringify(userProfile)}
-The profile is user-provided context, not official evidence. Unknown or null fields must remain uncertain. Never infer household separation, marital status, assets, or home-ownership eligibility from another field. Never repeat exact birth dates, income, assets, debt, account balances, or other raw private profile values in any output field. Refer only to the relevant rule as satisfied, failed, or unknown.
+The profile is user-provided context, not official evidence. Unknown or null fields must remain uncertain. Never infer household separation, marital status, assets, or home-ownership eligibility from another field. This is a single-user private bot, so include the exact profile values when they make the eligibility reasoning clearer.
 
 NOTICE: ${JSON.stringify({
     id: notice.id, source: notice.source, title: notice.title, url: notice.url,

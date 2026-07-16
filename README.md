@@ -64,7 +64,7 @@ npm run housing:daily
 
 - Keep the private profile outside Git and point `HOUSING_USER_PROFILE_FILE` at the mode-600 JSON file.
 - A confirmed recommendation is shown after eligibility and official evidence are complete. Otherwise the digest keeps the component total with an explicit `(추정)` label and lists the missing conditions and evidence gaps.
-- Profile changes automatically invalidate active reviews. Exact profile values are removed before AI results are stored or sent to Telegram.
+- Profile changes automatically invalidate active reviews. The private profile file stays outside Git, while this single-user bot may include exact values in its stored assessment and Telegram explanation.
 - PDF extraction uses Poppler. Image-only PDFs can use `pdftoppm`, `pdfinfo`, and Tesseract with `kor+eng` language data when installed.
 
 ## License
