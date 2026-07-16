@@ -61,10 +61,12 @@ test("requests every page reported by totalCount", async () => {
         header: { resultCode: "00", resultMsg: "NORMAL SERVICE" },
         body: {
           totalCount: "101",
-          item: [{
-            pblancId: String(pageNo), pblancNm: `서울 공고 ${pageNo}`,
-            url: `https://apply.lh.or.kr/notice/${pageNo}`,
-          }],
+          item: pageNo === 1
+            ? Array.from({ length: 100 }, (_, index) => ({
+              pblancId: String(index + 1), pblancNm: `서울 공고 ${index + 1}`,
+              url: `https://apply.lh.or.kr/notice/${index + 1}`,
+            }))
+            : [{ pblancId: "101", pblancNm: "서울 공고 101", url: "https://apply.lh.or.kr/notice/101" }],
         },
       },
     }), { status: 200 });
@@ -73,5 +75,32 @@ test("requests every page reported by totalCount", async () => {
   const result = await collectMyHomeApi([]);
 
   assert.deepEqual(requestedPages, [1, 2]);
-  assert.deepEqual(result.notices.map((notice) => notice.id), ["myhome:1", "myhome:2"]);
+  assert.equal(result.notices.length, 101);
+  assert.equal(result.notices.at(-1).id, "myhome:101");
+});
+
+test("rejects a partial successful page instead of deactivating missing notices", async () => {
+  process.env.MYHOME_API_SERVICE_KEY = "test-key";
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    response: {
+      header: { resultCode: "00", resultMsg: "NORMAL SERVICE" },
+      body: { totalCount: "2", item: [{ pblancId: "1", pblancNm: "서울 공고 1" }] },
+    },
+  }), { status: 200 });
+  await assert.rejects(() => collectMyHomeApi([]), /returned 1 of 2 rows/);
+});
+
+test("rejects a changing totalCount across pages", async () => {
+  process.env.MYHOME_API_SERVICE_KEY = "test-key";
+  globalThis.fetch = async (input) => {
+    const pageNo = Number(new URL(input).searchParams.get("pageNo"));
+    const totalCount = pageNo === 1 ? 101 : 100;
+    const item = Array.from({ length: 100 }, (_, index) => ({
+      pblancId: `${pageNo}-${index}`, pblancNm: `서울 공고 ${pageNo}-${index}`,
+    }));
+    return new Response(JSON.stringify({
+      response: { header: { resultCode: "00" }, body: { totalCount: String(totalCount), item } },
+    }), { status: 200 });
+  };
+  await assert.rejects(() => collectMyHomeApi([]), /totalCount changed/);
 });

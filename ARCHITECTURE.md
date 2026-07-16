@@ -18,6 +18,18 @@ Housing has a version-controlled base instruction in `src/apps/housing/instructi
 
 Housing discovery is a thin completeness sensor. New or changed likely/possible notices enter `review_queue`. The AI reviewer reads untrusted official content as evidence, may request up to two follow-ups, and the orchestrator fulfills those requests only through an HTTPS official-domain allowlist. Missing critical fields force a title-based official detail search even when the model does not request one. Structured reviews and content hashes are retained in SQLite; unchanged notices do not consume another AI call.
 
+Job discovery is deliberately separated from job filtering. The collectors read only public listing/detail routes and store normalized job records in `jobs.sqlite`; they never read the user's profile. The filter stage loads the ignored `JOB_USER_PROFILE_FILE`, first applies deterministic company gates, then gives only surviving job descriptions to the AI evaluator. Company verification is an injected licensed/manual dataset, never a JobPlanet crawler. A missing verification is an exclusion under the current strict policy.
+
+Housing decisions separate hard eligibility from practical value. The score is calculated from bounded components: housing value (40), selection chance (30), and execution readiness (30). When eligibility or official evidence remains uncertain, Telegram retains the component total but labels it `(추정)` and shows the critical user facts and missing official evidence.
+
+The private housing profile is loaded from `HOUSING_USER_PROFILE_FILE` and is never committed. A canonical fingerprint, not the profile itself, is stored with reviews. Changing the profile automatically invalidates and requeues active candidate reviews. Because this is a single-user bot, assessment output may retain exact profile values in SQLite and Telegram.
+
+Review rows are also gated by a versioned decision policy. Queue claims carry a unique token and a one-hour fallback lease; a timed-out daily worker releases its claims immediately. The daily service runs review work in a killable child process with a 45-minute hard deadline, preserving time for the Telegram digest inside the two-hour systemd window.
+
+Official evidence retrieval ranks title matches conservatively, classifies official attachments, samples long PDFs across their full page range, and attempts OCR when a PDF has too little extractable text. Retrieval failures remain explicit evidence gaps; they are not converted into user ineligibility. OCR requires `pdftoppm`, `tesseract`, and Korean language data on the worker host.
+
+MyHome collection is considered complete only when every advertised raw row is returned and `totalCount` remains stable across pages. Otherwise the previous active set is retained rather than treating a partial API response as deletions.
+
 ## Adding another monitor
 
 An app module exposes:
