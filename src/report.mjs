@@ -38,7 +38,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     seen.add(key);
     return true;
   }).slice(0, 12);
-  const counts = sourceOrder.map((source) => {
+  const counts = [...sourceOrder, "마이홈 API"].map((source) => {
     const item = summary.find((entry) => entry.source === source);
     return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
   }).join(" · ");

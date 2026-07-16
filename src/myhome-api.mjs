@@ -43,7 +43,20 @@ export async function collectMyHomeApi(rules) {
   url.searchParams.set("pageNo", "1");
   url.searchParams.set("_type", "json");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+  let response;
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
+      if (response.status < 500 || attempt === 3) break;
+      lastError = new Error(`MyHome API HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+  }
+  if (!response) throw lastError || new Error("MyHome API request failed");
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(`MyHome API HTTP ${response.status}`);
   const resultCode = payload?.response?.header?.resultCode;
