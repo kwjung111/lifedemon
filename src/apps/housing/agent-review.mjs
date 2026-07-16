@@ -8,7 +8,7 @@ import {
   saveNoticeReview,
 } from "../../db.mjs";
 import { HOUSING_BASE_INSTRUCTION } from "./instructions.mjs";
-import { fulfillNeeds, openOfficial } from "./official-tools.mjs";
+import { fulfillNeeds, officialSearchSource, openOfficial } from "./official-tools.mjs";
 
 const codexAuto = "/home/ubuntu/.local/bin/codex-auto";
 
@@ -124,14 +124,18 @@ async function reviewOne(notice) {
   markReviewing(notice.id);
   const primary = await openOfficial(notice.url);
   let result = validResult(await runCodex(assessmentPrompt(notice, primary)));
+  const searchSource = officialSearchSource(notice.source, notice.raw_text);
   if (needsCriticalFollowup(result)) {
     result.needs = [{
       type: "search",
-      source: notice.source,
+      source: searchSource,
       query: notice.title.replace(/\s*\d+일전\s*$/, ""),
       purpose: "목록 화면에 없는 신청기간·자격·비용·공급호수 확인",
     }, ...result.needs.filter((need) => need.type !== "search")].slice(0, 2);
   }
+  result.needs = result.needs.map((need) => need.type === "search"
+    ? { ...need, source: searchSource }
+    : need);
   if (result.needs.length) {
     const supplemental = await fulfillNeeds(result.needs);
     const detailed = supplemental.find((item) => item.result?.text)?.result || primary;

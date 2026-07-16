@@ -33,6 +33,18 @@ function clean(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+export function officialSearchSource(source, rawText = "") {
+  if (source !== "마이홈 API") return source;
+  try {
+    const parsed = JSON.parse(rawText || "{}");
+    const item = Array.isArray(parsed) ? parsed[0] : parsed;
+    const provider = clean(item?.suplyInsttNm).toUpperCase();
+    if (provider.includes("LH")) return "LH";
+    if (provider.includes("SH")) return "SH";
+  } catch { /* fall back to MyHome */ }
+  return "마이홈";
+}
+
 async function readPdf(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!response.ok) throw new Error(`PDF HTTP ${response.status}`);

@@ -49,3 +49,29 @@ test("rejects a successful-looking response with a missing schema", async () => 
 
   await assert.rejects(() => collectMyHomeApi([]), /INVALID_RESPONSE/);
 });
+
+test("requests every page reported by totalCount", async () => {
+  process.env.MYHOME_API_SERVICE_KEY = "test-key";
+  const requestedPages = [];
+  globalThis.fetch = async (input) => {
+    const pageNo = Number(new URL(input).searchParams.get("pageNo"));
+    requestedPages.push(pageNo);
+    return new Response(JSON.stringify({
+      response: {
+        header: { resultCode: "00", resultMsg: "NORMAL SERVICE" },
+        body: {
+          totalCount: "101",
+          item: [{
+            pblancId: String(pageNo), pblancNm: `서울 공고 ${pageNo}`,
+            url: `https://apply.lh.or.kr/notice/${pageNo}`,
+          }],
+        },
+      },
+    }), { status: 200 });
+  };
+
+  const result = await collectMyHomeApi([]);
+
+  assert.deepEqual(requestedPages, [1, 2]);
+  assert.deepEqual(result.notices.map((notice) => notice.id), ["myhome:1", "myhome:2"]);
+});

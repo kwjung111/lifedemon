@@ -11,34 +11,6 @@ const sources = [
 const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
 const noticeWords = /모집|입주자|예비입주자|청년주택|임대주택|든든전세|잔여세대/;
 const closedWords = /당첨자|경쟁률|서류심사|발표|마감|공급완료/;
-const seoulWords = /서울|강남|강동|강북|강서|관악|광진|구로|금천|노원|도봉|동대문|동작|마포|서대문|서초|성동|성북|송파|양천|영등포|용산|은평|종로|중구|중랑/;
-
-async function rowCandidates(page, source) {
-  const rows = await page.locator("table tr").evaluateAll((items) => items.map((row) => ({
-    text: (row.textContent || "").replace(/\s+/g, " ").trim(),
-    links: [...row.querySelectorAll("a")].map((a) => ({
-      text: (a.textContent || "").replace(/\s+/g, " ").trim(),
-      href: a.href,
-      onclick: a.getAttribute("onclick") || "",
-    })),
-  })));
-  const result = [];
-  for (const row of rows) {
-    const candidates = row.links.filter((link) => link.text.length >= 6 && noticeWords.test(link.text));
-    const best = candidates.sort((a, b) => b.text.length - a.text.length)[0];
-    if (!best) continue;
-    const shSeq = source.name === "SH" ? best.onclick.match(/getDetailView\(['"]?(\d+)/)?.[1] : null;
-    const detailUrl = shSeq
-      ? new URL(`view.do?multi_itm_seq=2&seq=${shSeq}`, source.url).href
-      : best.href;
-    result.push({
-      title: best.text,
-      url: detailUrl && !detailUrl.startsWith("javascript:") && !detailUrl.endsWith("#") ? detailUrl : source.url,
-      rawText: row.text,
-    });
-  }
-  return result;
-}
 
 async function anchorCandidates(page, source) {
   const links = await page.locator("a").evaluateAll((anchors) => anchors.map((a) => ({
@@ -56,9 +28,8 @@ async function collectSource(context, source, rules) {
     const response = await page.goto(source.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (!response || response.status() >= 400) throw new Error(`HTTP ${response?.status()}`);
     await page.waitForTimeout(2500);
-    const rows = await rowCandidates(page, source);
     const anchors = await anchorCandidates(page, source);
-    let items = rows;
+    let items = [];
 
     if (source.name === "청년안심주택") {
       items = anchors.filter((item) => item.url.includes("BMSR00015/view.do"));
@@ -90,10 +61,6 @@ async function collectSource(context, source, rules) {
         });
       }
       items = items.filter((item) => /입주자 모집공고문/.test(item.title) && /\.pdf(?:$|\?)/.test(item.url));
-    } else if (source.name === "마이홈") {
-      items = anchors.filter((item) => item.url.includes("selectRsdtRcritNtcDetailView.do") && seoulWords.test(item.title));
-    } else if (source.name === "SH" || source.name === "LH") {
-      items = rows;
     }
 
     const deduped = new Map();
@@ -118,21 +85,13 @@ async function collectSource(context, source, rules) {
         finally { await detail.close(); }
       }
       const dates = extractDates(`${item.title} ${rawText}`);
-      if (source.name === "LH" && !dates.applyEnd && /공고중/.test(rawText)) {
-        const values = [...rawText.matchAll(/(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/g)]
-          .map((match) => `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`);
-        if (values.length >= 2) {
-          dates.publishedAt ||= values[0];
-          dates.applyEnd = values.at(-1);
-        }
-      }
       const assessment = classify({ source: source.name, title: item.title, rawText, rules });
       results.push({
         source: source.name,
         title: item.title,
         url: item.url || source.url,
         rawText,
-        location: source.name === "SH" || source.name === "청년안심주택" ? "서울" : (seoulWords.test(item.title) ? "서울" : null),
+        location: source.name === "청년안심주택" ? "서울" : null,
         ...dates,
         ...assessment,
       });

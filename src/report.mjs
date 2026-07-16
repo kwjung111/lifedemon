@@ -1,4 +1,4 @@
-import { activeNotices, appliedNotices, saveDigestItems } from "./db.mjs";
+import { activeNotices, appliedNotices, exhaustedReviewCount, saveDigestItems } from "./db.mjs";
 import { sendMessage } from "./telegram.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
@@ -29,7 +29,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   }).format(new Date());
   const applied = appliedNotices();
   const seen = new Set();
-  const candidates = notices.filter((notice) => {
+  const allCandidates = notices.filter((notice) => {
     if (notice.application_status || !["likely", "possible"].includes(notice.verdict)) return false;
     if (notice.ai_eligibility === "no" || notice.ai_status === "closed") return false;
     if (notice.apply_end && notice.apply_end < today) return false;
@@ -37,7 +37,9 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 12);
+  });
+  const candidates = allCandidates.slice(0, 12);
+  const exhaustedReviews = exhaustedReviewCount();
   const counts = sourceOrder.map((source) => {
     const item = summary.find((entry) => entry.source === source);
     return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
@@ -46,11 +48,18 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   const lines = [
     `🏠 서울 1인 청년 주거공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     `수집: ${counts}`,
-    `후보 ${candidates.length}건 · 지원 진행 ${applied.length}건`,
+    `후보 ${allCandidates.length}건 · 지원 진행 ${applied.length}건`,
     reviewSummary.length
       ? `AI 검토 ${reviewSummary.filter((item) => !item.error).length}건 · 오류 ${reviewSummary.filter((item) => item.error).length}건`
       : "변경 없음",
   ];
+
+  if (allCandidates.length > candidates.length) {
+    lines.push(`표시 제한: 상위 ${candidates.length}건 · 미표시 ${allCandidates.length - candidates.length}건`);
+  }
+  if (exhaustedReviews) {
+    lines.push(`⚠️ AI 검토 재시도 소진 ${exhaustedReviews}건 · 운영 확인 필요`);
+  }
 
   if (applied.length) {
     lines.push("", "📌 지원 진행 중");
