@@ -20,7 +20,9 @@ function parseJson(output) {
 
 function runCodex(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn("/usr/bin/timeout", ["90s", codexAuto, "--ephemeral", prompt], {
+    const child = spawn("/usr/bin/timeout", [
+      "90s", codexAuto, "--ephemeral", "--sandbox", "read-only", prompt,
+    ], {
       cwd: "/data/crawler",
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   cancelReminderFromCalendar,
   getPlatformSetting,
@@ -73,6 +74,23 @@ function reminderToEvent(reminder) {
       },
     },
   };
+}
+
+function reminderEventId(reminder) {
+  const digest = createHash("sha256")
+    .update(`${reminder.id}:${reminder.updated_at}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `lifedemon${digest}`;
+}
+
+async function insertEventIdempotently(client, eventBody, eventId) {
+  try {
+    return await client.insertEvent(eventBody, eventId);
+  } catch (error) {
+    if (error.status !== 409) throw error;
+    return client.updateEvent(eventId, eventBody);
+  }
 }
 
 function eventMetadata(event, calendarId) {
@@ -152,8 +170,11 @@ export function createGoogleCalendarClient({ config = googleCalendarConfig(), fe
       }
       return request(`${calendarPath}/events?${params}`);
     },
-    insertEvent(event) {
-      return request(`${calendarPath}/events`, { method: "POST", body: event });
+    insertEvent(event, eventId = null) {
+      return request(`${calendarPath}/events`, {
+        method: "POST",
+        body: eventId ? { ...event, id: eventId } : event,
+      });
     },
     updateEvent(eventId, event) {
       return request(`${calendarPath}/events/${encodeURIComponent(eventId)}`, { method: "PATCH", body: event });
@@ -227,12 +248,23 @@ async function pushLocalChanges(client) {
         markReminderCalendarSynced(reminder.id, {});
         deleted += 1;
       } else if (reminder.status === "approved") {
-        const event = reminder.google_event_id
-          ? await client.updateEvent(reminder.google_event_id, reminderToEvent(reminder))
-          : await client.insertEvent(reminderToEvent(reminder));
+        const eventBody = reminderToEvent(reminder);
+        let eventId = reminder.google_event_id || reminderEventId(reminder);
+        let event;
+        if (reminder.google_event_id) {
+          try {
+            event = await client.updateEvent(eventId, eventBody);
+          } catch (error) {
+            if (error.status !== 404) throw error;
+            eventId = reminderEventId(reminder);
+            event = await insertEventIdempotently(client, eventBody, eventId);
+          }
+        } else {
+          event = await insertEventIdempotently(client, eventBody, eventId);
+        }
         markReminderCalendarSynced(reminder.id, {
           calendarId: client.calendarId,
-          eventId: event?.id || reminder.google_event_id,
+          eventId: event?.id || eventId,
         });
         if (reminder.google_event_id) updated += 1;
         else created += 1;
@@ -254,7 +286,10 @@ export async function syncGoogleCalendar({ client = null, now = new Date(), env 
     const pushed = await pushLocalChanges(activeClient);
     const syncedAt = new Date().toISOString();
     setPlatformSetting("google_calendar_last_sync", syncedAt);
-    setPlatformSetting("google_calendar_last_error", "");
+    setPlatformSetting(
+      "google_calendar_last_error",
+      pushed.errors.length ? `${pushed.errors.length} calendar push operation(s) failed` : "",
+    );
     return { skipped: false, ...pulled, ...pushed, syncedAt };
   } catch (error) {
     setPlatformSetting("google_calendar_last_error", error.message);

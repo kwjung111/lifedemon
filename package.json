@@ -12,7 +12,7 @@
     "housing:daily": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/daily.mjs",
     "housing:diagnose": "node src/diagnose.mjs",
     "calendar:sync": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/admin/sync-google-calendar.mjs",
-    "check": "node --check src/bot.mjs && node --check src/daily.mjs"
+    "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/reminder-worker.mjs && node --check src/integrations/google-calendar.mjs && node --check src/apps/reminders/ai-parser.mjs && node --check src/admin/authorize-google-calendar.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.1"

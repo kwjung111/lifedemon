@@ -36,7 +36,7 @@ Reminder links are optional. Domain events may attach a resolver and structured 
 
 Google Calendar integration is optional and remains inside the reminder worker. A dedicated calendar is synchronized in both directions through the Google Calendar REST API: approved/cancelled global reminders are pushed to Google, and Google event creates/updates/deletes are applied to `platform.sqlite`. OAuth credentials are supplied only through the private environment file. When they are absent or the feature flag is off, reminder behavior is unchanged.
 
-Natural-language Telegram reminder requests are routed to an ephemeral Codex parser only when reminder intent is detected. The parser returns structured JSON, cannot execute tools, and must ask for clarification when an exact date or time is missing. The existing approval callback remains the write boundary, while the strict `/remind` syntax bypasses AI entirely.
+Natural-language Telegram reminder requests are routed to an ephemeral, read-only sandboxed Codex parser only when reminder intent is detected. The parser output is validated as structured JSON and must ask for clarification when an exact date or time is missing. The existing approval callback remains the write boundary, while the strict `/remind` syntax bypasses AI entirely.
 
 ## Codex authentication fallback
 

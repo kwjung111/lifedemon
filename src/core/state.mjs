@@ -152,17 +152,25 @@ export function upsertReminderFromCalendar({
 }) {
   const timestamp = syncedAt || now();
   const existing = db.prepare(`
-    SELECT id FROM reminders WHERE google_calendar_id=? AND google_event_id=?
+    SELECT id, status, updated_at, calendar_synced_at
+    FROM reminders WHERE google_calendar_id=? AND google_event_id=?
   `).get(calendarId, eventId);
 
   if (existing) {
+    const hasPendingLocalCancellation = existing.status === "cancelled"
+      && (!existing.calendar_synced_at || existing.updated_at > existing.calendar_synced_at);
+    if (hasPendingLocalCancellation) return getReminder(existing.id);
+
+    const nextStatus = existing.status === "fired" && dueAt <= timestamp
+      ? "fired"
+      : "approved";
     db.prepare(`
       UPDATE reminders
-      SET title=?, due_at=?, url=COALESCE(url, ?), metadata_json=?, status='approved',
+      SET title=?, due_at=?, url=COALESCE(url, ?), metadata_json=?, status=?,
           calendar_synced_at=?, calendar_sync_error=NULL, updated_at=?
       WHERE id=?
     `).run(
-      title, dueAt, url, metadata ? JSON.stringify(metadata) : null,
+      title, dueAt, url, metadata ? JSON.stringify(metadata) : null, nextStatus,
       timestamp, timestamp, existing.id,
     );
     return getReminder(existing.id);

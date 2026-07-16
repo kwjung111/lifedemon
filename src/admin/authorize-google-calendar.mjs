@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 
 const clientId = String(process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
@@ -111,4 +111,5 @@ try {
   console.log(`AUTHORIZED_ENV=${outputPath}`);
 } finally {
   server.close();
+  await unlink(`${outputPath}.auth-url`).catch(() => {});
 }
