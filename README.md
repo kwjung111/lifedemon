@@ -36,7 +36,22 @@ cp .env.example .env
 npm run bot
 npm run reminders
 npm run housing:daily
+npm run jobs:collect
+npm run jobs:filter
+npm run jobs:daily
 ```
+
+## Job notices
+
+The job pipeline has two separate stages. `jobs:collect` accesses only public listing and detail pages from Remember, Wanted, and JobKorea, then normalizes and deduplicates postings. It does not use the private profile or make suitability decisions.
+
+`jobs:filter` loads the private `JOB_USER_PROFILE_FILE`, applies deterministic company gates first, and asks AI to evaluate the remaining job descriptions against the natural-language profile. The profile and company verification import stay under the ignored `data/` directory or an external mode-600 production path. `/jobs` shows the latest filtered digest in Telegram; `jobs:daily` sends one message after collection and filtering.
+
+Wanted is session-gated. Set `WANTED_STORAGE_STATE_FILE` to a local, ignored Playwright storage-state file exported from an already logged-in Wanted session. Never add an ID, password, cookie, or storage-state file to Git.
+
+The production `jobs-daily.timer` runs one weekday digest at 09:20 KST. Install it with the other systemd units only after the private profile, company-verification import, and (optionally) Wanted session have been placed outside Git.
+
+JobPlanet must not be crawled: its published policy prohibits automated collection and AI use of its content. The strict gate therefore requires an authorized or manually supplied entry in the format shown in `job-company-verifications.example.json`. Missing JobPlanet verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
 
 운영 환경에서는 `systemd/`의 서비스와 타이머 예시를 환경에 맞게 수정해서 사용합니다.
 

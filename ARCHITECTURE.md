@@ -18,6 +18,8 @@ Housing has a version-controlled base instruction in `src/apps/housing/instructi
 
 Housing discovery is a thin completeness sensor. New or changed likely/possible notices enter `review_queue`. The AI reviewer reads untrusted official content as evidence, may request up to two follow-ups, and the orchestrator fulfills those requests only through an HTTPS official-domain allowlist. Missing critical fields force a title-based official detail search even when the model does not request one. Structured reviews and content hashes are retained in SQLite; unchanged notices do not consume another AI call.
 
+Job discovery is deliberately separated from job filtering. The collectors read only public listing/detail routes and store normalized job records in `jobs.sqlite`; they never read the user's profile. The filter stage loads the ignored `JOB_USER_PROFILE_FILE`, first applies deterministic company gates, then gives only surviving job descriptions to the AI evaluator. Company verification is an injected licensed/manual dataset, never a JobPlanet crawler. A missing verification is an exclusion under the current strict policy.
+
 ## Adding another monitor
 
 An app module exposes:
