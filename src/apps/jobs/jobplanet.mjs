@@ -45,7 +45,7 @@ export async function lookupJobPlanetCompany(company) {
     });
     const page = await context.newPage();
     await ensureSignedIn(page, context);
-    await page.goto(`https://www.jobplanet.co.kr/search/companies?query=${encodeURIComponent(company)}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.goto(`https://www.jobplanet.co.kr/search?query=${encodeURIComponent(company)}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     const cards = await page.locator('a[href*="/companies/"]').evaluateAll((items) => items.map((item) => ({ href: item.href, text: item.textContent || "" })).filter((item) => item.text.trim()));
     const key = normalizeCompanyName(company);
     const match = cards.find((card) => normalizeCompanyName(card.text).startsWith(key));
