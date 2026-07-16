@@ -7,8 +7,19 @@ const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 const first = (item, keys) => keys.map((key) => item?.[key]).find((value) => clean(value));
 
 function itemList(payload) {
-  const items = payload?.response?.body?.items?.item ?? payload?.body?.items?.item ?? [];
+  const items = payload?.response?.body?.item
+    ?? payload?.response?.body?.items?.item
+    ?? payload?.body?.item
+    ?? payload?.body?.items?.item
+    ?? [];
   return Array.isArray(items) ? items : [items];
+}
+
+function toIsoDate(value) {
+  const digits = clean(value).replace(/\D/g, "");
+  return /^20\d{6}$/.test(digits)
+    ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+    : null;
 }
 
 function noticeFromItem(item, rules) {
@@ -21,13 +32,17 @@ function noticeFromItem(item, rules) {
     ? suppliedUrl
     : noticeId ? `${detailRoot}?pblancId=${encodeURIComponent(noticeId)}` : endpoint;
   const rawText = JSON.stringify(item);
+  const dates = extractDates(`${title} ${rawText}`);
   return {
     source: "마이홈 API",
     title,
     url,
     rawText,
     location: "서울",
-    ...extractDates(`${title} ${rawText}`),
+    publishedAt: toIsoDate(item.rcritPblancDe) || dates.publishedAt,
+    applyStart: toIsoDate(item.beginDe) || dates.applyStart,
+    applyEnd: toIsoDate(item.endDe) || dates.applyEnd,
+    announcementDate: toIsoDate(item.przwnerPresnatnDe) || dates.announcementDate,
     ...classify({ source: "마이홈", title, rawText, location: "서울", rules }),
   };
 }
@@ -62,6 +77,13 @@ export async function collectMyHomeApi(rules) {
   const resultCode = payload?.response?.header?.resultCode;
   if (resultCode && resultCode !== "00") throw new Error(`MyHome API ${resultCode}: ${payload.response.header.resultMsg || "request failed"}`);
 
-  const notices = itemList(payload).map((item) => noticeFromItem(item, rules)).filter(Boolean);
+  const noticesByPublicNotice = new Map();
+  for (const item of itemList(payload)) {
+    const notice = noticeFromItem(item, rules);
+    if (!notice) continue;
+    const key = clean(item.pblancId) || `${notice.title}\n${notice.url}`;
+    noticesByPublicNotice.set(key, notice);
+  }
+  const notices = [...noticesByPublicNotice.values()];
   return { notices, skipped: null };
 }
