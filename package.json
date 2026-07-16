@@ -1,24 +1,17 @@
 {
-  "name": "lifedemon",
-  "version": "1.0.2",
-  "description": "Self-hosted personal automation daemon for monitoring, reminders, and life operations.",
+  "name": "monitor-platform",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "bot": "node --env-file=.env src/bot.mjs",
-    "telegram:menu": "node --env-file=.env src/init-bot.mjs",
-    "reminders": "node --env-file=.env src/reminder-worker.mjs",
-    "housing:daily": "node --env-file=.env src/daily.mjs",
-    "housing:queue": "node src/admin/queue-active-reviews.mjs",
-    "housing:review-one": "node src/admin/run-one-review.mjs",
+    "smoke": "node playwright-smoke.cjs",
+    "notify": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env scripts/telegram-notify.mjs",
+    "telegram:discover": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env scripts/telegram-discover.mjs",
+    "bot": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/bot.mjs",
+    "housing:daily": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/daily.mjs",
     "housing:diagnose": "node src/diagnose.mjs",
-    "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/reminder-worker.mjs"
+    "check": "node --check src/bot.mjs && node --check src/daily.mjs"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/kwjung111/lifedemon.git"
-  },
-  "license": "MIT",
   "dependencies": {
     "playwright": "^1.61.1"
   }
