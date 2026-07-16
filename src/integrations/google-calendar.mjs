@@ -138,12 +138,15 @@ export function createGoogleCalendarClient({ config = googleCalendarConfig(), fe
   return {
     calendarId: config.calendarId,
     async listEvents({ syncToken = null, pageToken = null, now = new Date() } = {}) {
-      const params = new URLSearchParams({ maxResults: "2500", showDeleted: "true" });
+      const params = new URLSearchParams({
+        maxResults: "2500",
+        showDeleted: "true",
+        singleEvents: "true",
+      });
       if (pageToken) params.set("pageToken", pageToken);
       if (syncToken) {
         params.set("syncToken", syncToken);
       } else {
-        params.set("singleEvents", "true");
         params.set("timeMin", new Date(now.getTime() - 5 * 60_000).toISOString());
         params.set("timeMax", new Date(now.getTime() + 366 * 86400_000).toISOString());
       }
@@ -162,7 +165,6 @@ export function createGoogleCalendarClient({ config = googleCalendarConfig(), fe
     },
   };
 }
-
 async function pullCalendarChanges(client, now) {
   const tokenKey = `google_calendar_sync_token:${client.calendarId}`;
   let syncToken = getPlatformSetting(tokenKey);
@@ -259,4 +261,3 @@ export async function syncGoogleCalendar({ client = null, now = new Date(), env 
     throw error;
   }
 }
-

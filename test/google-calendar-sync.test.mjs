@@ -132,4 +132,10 @@ test("refreshes OAuth and sends authenticated Calendar requests", async () => {
   assert.equal(requests.length, 2);
   assert.equal(requests[1].options.headers.authorization, "Bearer access");
   assert.match(requests[1].url, /calendar%40example\.test\/events/);
+  assert.match(requests[1].url, /singleEvents=true/);
+
+  requests.length = 0;
+  await client.listEvents({ syncToken: "previous-sync-token" });
+  assert.match(requests[0].url, /syncToken=previous-sync-token/);
+  assert.match(requests[0].url, /singleEvents=true/);
 });
