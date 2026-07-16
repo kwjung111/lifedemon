@@ -1,5 +1,4 @@
-import { sendMessage } from "../../telegram.mjs";
-import { formatJobReport } from "./report.mjs";
+import { sendJobReport } from "./report.mjs";
 
 export const jobsBotModule = {
   id: "jobs",
@@ -8,7 +7,7 @@ export const jobsBotModule = {
   async handleMessage(message) {
     const text = String(message.text || "").trim();
     if (!/^\/jobs(?:@\w+)?$/i.test(text)) return false;
-    await sendMessage(formatJobReport());
+    await sendJobReport();
     return true;
   },
 };
