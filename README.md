@@ -81,7 +81,18 @@ Create a dedicated calendar and an OAuth client with the Calendar scope
 `https://www.googleapis.com/auth/calendar`. Obtain a refresh token for the
 separate Google account that owns that calendar, then set the
 `GOOGLE_CALENDAR_*` values shown in `telegram.env.example`. Do not commit OAuth
-credentials. Restart `monitor-reminder.service`, then use `/calendar` in
+credentials. The one-time authorization helper accepts a private env file that
+contains `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`, opens a
+loopback OAuth callback, creates the dedicated `Life Daemon` calendar, and
+writes the complete private environment file:
+
+```sh
+node --env-file=/path/to/oauth-client.env \
+  src/admin/authorize-google-calendar.mjs /path/to/google-calendar.env
+```
+
+Open the URL written to the adjacent `.auth-url` file and approve access with
+the calendar owner account. Restart `monitor-reminder.service`, then use `/calendar` in
 Telegram to check the last synchronization state. A one-off synchronization can
 be run with `npm run calendar:sync` on the server.
 
