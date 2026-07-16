@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import { beginCollection, listHousingRules, upsertNotice } from "./db.mjs";
 import { classify, extractDates } from "./classify.mjs";
+import { collectMyHomeApi } from "./myhome-api.mjs";
 
 const sources = [
   { name: "LH", url: "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancList.do?mi=1026" },
@@ -152,6 +153,13 @@ export async function collectAll() {
   const context = await browser.newContext({ locale: "ko-KR", timezoneId: "Asia/Seoul" });
   const summary = [];
   try {
+    try {
+      const api = await collectMyHomeApi(rules);
+      for (const notice of api.notices) upsertNotice(notice);
+      summary.push({ source: "마이홈 API", count: api.notices.length, skipped: api.skipped || undefined });
+    } catch (error) {
+      summary.push({ source: "마이홈 API", count: 0, error: error.message });
+    }
     for (const source of sources) {
       try {
         const notices = await collectSource(context, source, rules);
