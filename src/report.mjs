@@ -2,7 +2,7 @@ import { activeNotices, appliedNotices, saveDigestItems } from "./db.mjs";
 import { sendMessage } from "./telegram.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
-const sourceOrder = ["LH", "SH", "청년안심주택", "HUG", "마이홈"];
+const sourceOrder = ["마이홈 API", "청년안심주택", "HUG"];
 
 function dday(date) {
   if (!date) return "발표일 미확인";
@@ -38,7 +38,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     seen.add(key);
     return true;
   }).slice(0, 12);
-  const counts = [...sourceOrder, "마이홈 API"].map((source) => {
+  const counts = sourceOrder.map((source) => {
     const item = summary.find((entry) => entry.source === source);
     return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
   }).join(" · ");

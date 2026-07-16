@@ -4,11 +4,8 @@ import { classify, extractDates } from "./classify.mjs";
 import { collectMyHomeApi } from "./myhome-api.mjs";
 
 const sources = [
-  { name: "LH", url: "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancList.do?mi=1026" },
-  { name: "SH", url: "https://www.i-sh.co.kr/app/lay2/program/S1T294C297/www/brd/m_247/list.do?multi_itm_seq=2" },
   { name: "청년안심주택", url: "https://soco.seoul.go.kr/youth/bbs/BMSR00015/list.do?menuNo=400008" },
   { name: "HUG", url: "https://www.khug.or.kr/jeonse/web/s07/s070102.jsp" },
-  { name: "마이홈", url: "https://www.myhome.go.kr/hws/portal/main/getMgtMainHubPage.do" },
 ];
 
 const clean = (value) => (value || "").replace(/\s+/g, " ").trim();
