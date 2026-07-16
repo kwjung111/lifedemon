@@ -125,7 +125,9 @@ async function reviewOne(notice) {
   return result;
 }
 
-export async function runAgentReviews({ limit = 3 } = {}) {
+// A daily run should finish every pending candidate before producing its single digest.
+// The limit remains configurable for the one-off admin reviewer and test callers.
+export async function runAgentReviews({ limit = 1000 } = {}) {
   const notices = pendingReviewNotices(limit);
   const results = [];
   for (const notice of notices) {

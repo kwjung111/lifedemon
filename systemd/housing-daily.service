@@ -9,5 +9,6 @@ User=ubuntu
 WorkingDirectory=/data/crawler
 EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
 ExecStart=/usr/local/bin/node /data/crawler/src/daily.mjs
+TimeoutStartSec=2h
 NoNewPrivileges=true
 PrivateTmp=true
