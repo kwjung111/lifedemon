@@ -60,6 +60,13 @@ npm run housing:daily
 - Telegram token, API key, SSH key, `auth.json`, 운영 DB를 커밋하지 마세요.
 - 사용자 입력은 지원하는 구조화 규칙으로만 저장하며 서버 명령으로 실행하지 않습니다.
 
+## Housing decision engine
+
+- Keep the private profile outside Git and point `HOUSING_USER_PROFILE_FILE` at the mode-600 JSON file.
+- A numeric recommendation is shown only after eligibility and official evidence are complete. Otherwise the digest lists the missing user conditions and official evidence gaps.
+- Profile changes automatically invalidate active reviews. Exact profile values are removed before AI results are stored or sent to Telegram.
+- PDF extraction uses Poppler. Image-only PDFs can use `pdftoppm`, `pdfinfo`, and Tesseract with `kor+eng` language data when installed.
+
 ## License
 
 MIT

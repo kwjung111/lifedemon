@@ -93,7 +93,13 @@ export async function collectMyHomeApi(rules) {
   for (let pageNo = 2; pageNo <= pageCount; pageNo += 1) {
     url.searchParams.set("pageNo", String(pageNo));
     const page = await fetchPage(url);
+    if (page.totalCount !== firstPage.totalCount) {
+      throw new Error(`MyHome API totalCount changed during pagination (${firstPage.totalCount} -> ${page.totalCount})`);
+    }
     responseItems.push(...page.items);
+  }
+  if (responseItems.length !== firstPage.totalCount) {
+    throw new Error(`MyHome API returned ${responseItems.length} of ${firstPage.totalCount} rows`);
   }
 
   const itemsByPublicNotice = new Map();

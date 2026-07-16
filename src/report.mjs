@@ -1,4 +1,5 @@
 import { activeNotices, appliedNotices, exhaustedReviewCount, saveDigestItems } from "./db.mjs";
+import { scoreLabel } from "./apps/housing/scoring.mjs";
 import { sendMessage } from "./telegram.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
@@ -38,8 +39,11 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     seen.add(key);
     return true;
   });
-  const candidates = allCandidates.slice(0, 12);
+  const candidates = allCandidates;
   const exhaustedReviews = exhaustedReviewCount();
+  const deferredReviews = reviewSummary.filter((item) => item.deferred).reduce((sum, item) => sum + (item.count || 0), 0);
+  const completedReviews = reviewSummary.filter((item) => !item.error && !item.deferred).length;
+  const failedReviews = reviewSummary.filter((item) => item.error && !item.deferred).length;
   const counts = sourceOrder.map((source) => {
     const item = summary.find((entry) => entry.source === source);
     return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
@@ -50,7 +54,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     `수집: ${counts}`,
     `후보 ${allCandidates.length}건 · 지원 진행 ${applied.length}건`,
     reviewSummary.length
-      ? `AI 검토 ${reviewSummary.filter((item) => !item.error).length}건 · 오류 ${reviewSummary.filter((item) => item.error).length}건`
+      ? `AI 검토 ${completedReviews}건 · 오류 ${failedReviews}건${deferredReviews ? ` · 다음 실행 ${deferredReviews}건` : ""}`
       : "변경 없음",
   ];
 
@@ -70,27 +74,51 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   }
 
   lines.push("", candidates.length ? "🔎 오늘 확인할 공고" : "오늘 새로 확인할 공고가 없습니다.");
-  candidates.forEach((notice, index) => {
+  const pages = [{ lines, notices: [] }];
+  let currentPage = pages[0];
+  for (const notice of candidates) {
+    const index = currentPage.notices.length;
     const reason = JSON.parse(notice.reasons_json || "[]")[0];
     const ai = notice.ai_result_json ? JSON.parse(notice.ai_result_json) : null;
-    const label = ai
-      ? `${notice.ai_eligibility === "yes" ? "🤖 추천" : "🤖 확인 필요"} ${notice.ai_score}점`
-      : verdictLabel[notice.verdict] || "🔎";
-    lines.push("", `${index + 1}. ${label} [${notice.source}]`);
-    lines.push(notice.title.slice(0, 100));
-    lines.push(`${notice.apply_end ? `마감 ${notice.apply_end}` : "마감일 확인 필요"} · ${ai?.summary || reason || "AI 검토 대기"}`);
-    if (ai?.costs && ai.costs !== "확인 필요") lines.push(`비용: ${ai.costs.slice(0, 100)}`);
-  });
-  lines.push("", "※ AI는 공식 자료 근거만 사용하며, 개인 소득·자산 정보가 없으면 ‘확인 필요’로 표시합니다.");
-  lines.push("답장 예: ‘3번 넣었어’, ‘3번 2026-08-10 발표’");
-
-  const keyboard = candidates.map((notice, index) => [
-    { text: `${index + 1} ✅`, callback_data: `h:ap:${notice.id}` },
-    { text: `${index + 1} 🙈`, callback_data: `h:ig:${notice.id}` },
-    { text: `${index + 1} 원문`, url: notice.url },
-  ]);
-  const message = await sendMessage(lines.join("\n").slice(0, 4090), {
-    reply_markup: { inline_keyboard: keyboard },
-  });
-  saveDigestItems(message.message_id, candidates.map((notice) => notice.id));
+    const label = ai ? `🤖 ${scoreLabel(ai)}` : verdictLabel[notice.verdict] || "🔎";
+    const block = [
+      "",
+      `${index + 1}. ${label} [${notice.source}]`,
+      notice.title.slice(0, 100),
+      `${notice.apply_end ? `마감 ${notice.apply_end}` : "마감일 확인 필요"} · ${ai?.summary || reason || "AI 검토 대기"}`,
+    ];
+    if (ai?.critical_unknowns?.length) {
+      block.push(`확인할 것: ${ai.critical_unknowns.slice(0, 2).join(" · ").slice(0, 140)}`);
+    }
+    if (ai?.evidence_gaps?.length) {
+      block.push(`공식자료 부족: ${ai.evidence_gaps.slice(0, 2).join(" · ").slice(0, 140)}`);
+    }
+    if (ai?.costs && ai.costs !== "확인 필요") block.push(`비용: ${ai.costs.slice(0, 100)}`);
+    if ([...currentPage.lines, ...block].join("\n").length > 3_800 && currentPage.notices.length) {
+      currentPage = {
+        lines: [
+          `🏠 서울 1인 청년 주거공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
+          `🔎 오늘 확인할 공고 (계속 ${pages.length + 1})`,
+        ],
+        notices: [],
+      };
+      pages.push(currentPage);
+      block[1] = `1. ${label} [${notice.source}]`;
+    }
+    currentPage.lines.push(...block);
+    currentPage.notices.push(notice);
+  }
+  for (const page of pages) {
+    page.lines.push("", "※ AI는 공식 자료 근거만 사용하며, 자격이 불확실하면 점수를 숨깁니다.");
+    page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 2026-08-10 발표’");
+    const keyboard = page.notices.map((notice, index) => [
+      { text: `${index + 1} ✅`, callback_data: `h:ap:${notice.id}` },
+      { text: `${index + 1} 🙈`, callback_data: `h:ig:${notice.id}` },
+      { text: `${index + 1} 원문`, url: notice.url },
+    ]);
+    const message = await sendMessage(page.lines.join("\n").slice(0, 4090), {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    saveDigestItems(message.message_id, page.notices.map((notice) => notice.id));
+  }
 }
