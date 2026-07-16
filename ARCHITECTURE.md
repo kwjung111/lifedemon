@@ -34,6 +34,8 @@ Daily collectors remain separate systemd one-shot services and timers. The alway
 Approved reminders are stored in `platform.sqlite` and delivered by the independent `monitor-reminder.service`. App modules propose reminders; they do not schedule or send due events themselves.
 Reminder links are optional. Domain events may attach a resolver and structured metadata; the worker resolves an official result link at delivery time. Generic events can have no link at all.
 
+Google Calendar integration is optional and remains inside the reminder worker. A dedicated calendar is synchronized in both directions through the Google Calendar REST API: approved/cancelled global reminders are pushed to Google, and Google event creates/updates/deletes are applied to `platform.sqlite`. OAuth credentials are supplied only through the private environment file. When they are absent or the feature flag is off, reminder behavior is unchanged.
+
 ## Codex authentication fallback
 
 `codex-auto` runs new non-interactive tasks with the ChatGPT-authenticated Codex home first. It retries with the separately stored API-authenticated home only for recognizable usage-limit, rate-limit, quota, or HTTP 429 failures, and sends a Telegram notice when it switches. Other failures are returned unchanged. `codex-api` explicitly opens the API-authenticated profile. Interactive sessions are not switched mid-turn.

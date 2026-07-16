@@ -1,6 +1,7 @@
 import { getReminder, listReminders, setReminderStatus } from "../../core/state.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { formatReminderTime, kstDateTimeToIso, proposeReminder } from "./service.mjs";
+import { calendarSyncStatus } from "../../integrations/google-calendar.mjs";
 
 function parseCreate(text) {
   const match = text.match(/^(?:\/remind(?:@\w+)?|알림\s*등록)\s+(20\d{2}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$/i);
@@ -11,10 +12,11 @@ function parseCreate(text) {
 
 export const reminderBotModule = {
   id: "reminders",
-  help: "🔔 전역 알림\n/reminders : 예정 알림 목록\n/remind 2026-07-20 16:00 서류 발표 [| 선택 링크]",
+  help: "🔔 전역 알림\n/reminders : 예정 알림 목록\n/remind 2026-07-20 16:00 서류 발표 [| 선택 링크]\n/calendar : Google Calendar 연동 상태",
   commands: [
     { command: "reminders", description: "예정된 전역 알림 보기" },
     { command: "remind", description: "새 전역 알림 등록" },
+    { command: "calendar", description: "Google Calendar 연동 상태" },
   ],
 
   canHandleCallback(query) {
@@ -47,11 +49,31 @@ export const reminderBotModule = {
 
   async handleMessage(message) {
     const text = String(message.text || "").trim();
+    if (/^\/calendar(?:@\w+)?$/i.test(text)) {
+      const status = calendarSyncStatus();
+      await sendMessage([
+        "📅 Google Calendar 연동",
+        `상태: ${status.configured ? "✅ 사용 중" : status.enabled ? "⚠️ 설정 미완료" : "⏸ 꺼짐"}`,
+        status.calendarId ? `캘린더: ${status.calendarId}` : null,
+        status.lastSync ? `마지막 동기화: ${formatReminderTime(status.lastSync)}` : null,
+        status.lastError ? `최근 오류: ${status.lastError}` : null,
+      ].filter(Boolean).join("\n"));
+      return true;
+    }
     if (/^\/reminders(?:@\w+)?$/i.test(text) || /^알림\s*(?:목록|보여줘)$/i.test(text)) {
       const reminders = listReminders();
-      await sendMessage(reminders.length
-        ? `🔔 예정 알림\n\n${reminders.map((item, index) => `${item.status === "approved" ? "✅" : "⏳"} ${index + 1}. ${formatReminderTime(item.due_at)}\n${item.title}`).join("\n\n")}`
-        : "예정된 알림이 없습니다.");
+      await sendMessage(
+        reminders.length
+          ? `🔔 예정 알림\n\n${reminders.map((item, index) => `${item.status === "approved" ? "✅" : "⏳"} ${index + 1}. ${formatReminderTime(item.due_at)}\n${item.title}`).join("\n\n")}`
+          : "예정된 알림이 없습니다.",
+        reminders.length ? {
+          reply_markup: {
+            inline_keyboard: reminders.map((item, index) => [{
+              text: `${index + 1}번 취소`, callback_data: `r:cancel:${item.id}`,
+            }]),
+          },
+        } : {},
+      );
       return true;
     }
     const request = parseCreate(text);

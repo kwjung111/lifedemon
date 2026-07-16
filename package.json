@@ -11,6 +11,7 @@
     "bot": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/bot.mjs",
     "housing:daily": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/daily.mjs",
     "housing:diagnose": "node src/diagnose.mjs",
+    "calendar:sync": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/admin/sync-google-calendar.mjs",
     "check": "node --check src/bot.mjs && node --check src/daily.mjs"
   },
   "dependencies": {

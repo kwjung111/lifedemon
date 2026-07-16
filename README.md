@@ -60,6 +60,24 @@ npm run housing:daily
 - Telegram token, API key, SSH key, `auth.json`, 운영 DB를 커밋하지 마세요.
 - 사용자 입력은 지원하는 구조화 규칙으로만 저장하며 서버 명령으로 실행하지 않습니다.
 
+## Google Calendar sync
+
+The global reminder bot can optionally synchronize with a dedicated Google
+Calendar in both directions. A local approved reminder becomes a 30-minute
+calendar event at the reminder time. Creating, editing, or deleting an event in
+that calendar creates, updates, or cancels the matching local reminder.
+
+Create a dedicated calendar and an OAuth client with the Calendar scope
+`https://www.googleapis.com/auth/calendar`. Obtain a refresh token for the
+separate Google account that owns that calendar, then set the
+`GOOGLE_CALENDAR_*` values shown in `telegram.env.example`. Do not commit OAuth
+credentials. Restart `monitor-reminder.service`, then use `/calendar` in
+Telegram to check the last synchronization state. A one-off synchronization can
+be run with `npm run calendar:sync` on the server.
+
+If `GOOGLE_CALENDAR_ENABLED` is false or any credential is missing, the existing
+reminder bot continues without Calendar access.
+
 ## License
 
 MIT
