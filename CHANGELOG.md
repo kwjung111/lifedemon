@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3 - 2026-07-16
+
+### Fixed
+
+- Malformed Codex JSON now fails only the current review instead of crashing the entire review worker.
+
 ## 1.1.2 - 2026-07-16
 
 ### Changed

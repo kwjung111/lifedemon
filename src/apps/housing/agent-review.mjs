@@ -40,8 +40,15 @@ function runCodex(prompt) {
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-12000); });
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0) resolve(parseJson(stdout));
-      else reject(new Error(`Codex review failed (${code}): ${stderr.slice(-2500)}`));
+      if (code !== 0) {
+        reject(new Error(`Codex review failed (${code}): ${stderr.slice(-2500)}`));
+        return;
+      }
+      try {
+        resolve(parseJson(stdout));
+      } catch (error) {
+        reject(new Error(`Codex review returned invalid JSON: ${error.message}`));
+      }
     });
   });
 }
