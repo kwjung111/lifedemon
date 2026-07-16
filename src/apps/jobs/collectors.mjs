@@ -84,7 +84,21 @@ async function extractDetail(page, href, source) {
   });
 }
 
-export async function collectPublicJobSource(source, { query = "", maxDetails = 50 } = {}) {
+export async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function runWorker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, runWorker));
+  return results;
+}
+
+export async function collectPublicJobSource(source, { query = "", maxDetails = 50, detailConcurrency = 4 } = {}) {
   if (source.requiresSession && !process.env.WANTED_STORAGE_STATE_FILE) {
     throw new Error("wanted requires WANTED_STORAGE_STATE_FILE from an already logged-in session");
   }
@@ -99,15 +113,15 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
     if (!response || response.status() >= 400) throw new Error(`${source.name} listing HTTP ${response?.status()}`);
     await page.waitForTimeout(1_000);
     const links = linksForSource(source, await anchorsOn(page), query);
-    const jobs = [];
-    for (const link of links.slice(0, maxDetails)) {
+    const details = await mapWithConcurrency(links.slice(0, maxDetails), detailConcurrency, async (link) => {
       const detail = await context.newPage();
       try {
-        const job = await extractDetail(detail, link.href, source);
-        if (job) jobs.push(job);
+        return await extractDetail(detail, link.href, source);
       } catch { /* One bad detail must not make the whole source look empty. */ }
       finally { await detail.close(); }
-    }
+      return null;
+    });
+    const jobs = details.filter(Boolean);
     await context.close();
     if (!jobs.length) throw new Error(`${source.name} returned no readable public details`);
     return jobs;
