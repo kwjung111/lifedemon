@@ -60,6 +60,16 @@ npm run housing:daily
 - Telegram token, API key, SSH key, `auth.json`, 운영 DB를 커밋하지 마세요.
 - 사용자 입력은 지원하는 구조화 규칙으로만 저장하며 서버 명령으로 실행하지 않습니다.
 
+## Natural-language reminders
+
+The Telegram gateway accepts natural Korean reminder requests such as
+`내일 오후 3시에 병원 예약 알려줘`. Codex converts relative dates in the
+`Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
+times cause a clarification question instead of a guessed schedule. The parsed
+time and title are shown with the existing approval buttons before registration.
+The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
+AI-free fallback.
+
 ## Google Calendar sync
 
 The global reminder bot can optionally synchronize with a dedicated Google
