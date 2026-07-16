@@ -22,7 +22,8 @@ function toIsoDate(value) {
     : null;
 }
 
-function noticeFromItem(item, rules) {
+function noticeFromItems(items, rules) {
+  const item = items[0];
   const title = clean(first(item, ["pblancNm", "pblancSj", "noticeTitle", "title"]));
   const noticeId = clean(first(item, ["pblancId", "pblancSn", "noticeId", "id"]));
   const suppliedUrl = clean(first(item, ["pblancUrl", "detailUrl", "url"]));
@@ -31,9 +32,10 @@ function noticeFromItem(item, rules) {
   const url = suppliedUrl.startsWith("http")
     ? suppliedUrl
     : noticeId ? `${detailRoot}?pblancId=${encodeURIComponent(noticeId)}` : endpoint;
-  const rawText = JSON.stringify(item);
+  const rawText = JSON.stringify(items.length === 1 ? item : items);
   const dates = extractDates(`${title} ${rawText}`);
   return {
+    id: noticeId ? `myhome:${noticeId}` : undefined,
     source: "마이홈 API",
     title,
     url,
@@ -75,15 +77,26 @@ export async function collectMyHomeApi(rules) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(`MyHome API HTTP ${response.status}`);
   const resultCode = payload?.response?.header?.resultCode;
-  if (resultCode && resultCode !== "00") throw new Error(`MyHome API ${resultCode}: ${payload.response.header.resultMsg || "request failed"}`);
+  if (resultCode !== "00") throw new Error(`MyHome API ${resultCode || "INVALID_RESPONSE"}: ${payload?.response?.header?.resultMsg || "request failed"}`);
+  const totalCount = Number(payload?.response?.body?.totalCount);
+  if (!Number.isFinite(totalCount) || totalCount < 0) throw new Error("MyHome API response is missing totalCount");
+  const responseItems = itemList(payload);
+  if (totalCount > 0 && !responseItems.length) throw new Error("MyHome API response is missing notice items");
 
-  const noticesByPublicNotice = new Map();
-  for (const item of itemList(payload)) {
-    const notice = noticeFromItem(item, rules);
-    if (!notice) continue;
-    const key = clean(item.pblancId) || `${notice.title}\n${notice.url}`;
-    noticesByPublicNotice.set(key, notice);
+  const itemsByPublicNotice = new Map();
+  for (const item of responseItems) {
+    const title = clean(first(item, ["pblancNm", "pblancSj", "noticeTitle", "title"]));
+    const key = clean(item.pblancId) || `${title}\n${clean(item.url)}`;
+    const items = itemsByPublicNotice.get(key) || [];
+    items.push(item);
+    itemsByPublicNotice.set(key, items);
   }
-  const notices = [...noticesByPublicNotice.values()];
+
+  const notices = [];
+  for (const items of itemsByPublicNotice.values()) {
+    const notice = noticeFromItems(items, rules);
+    if (!notice) continue;
+    notices.push(notice);
+  }
   return { notices, skipped: null };
 }

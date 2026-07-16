@@ -141,10 +141,6 @@ export function noticeId(source, url, title) {
   return createHash("sha256").update(`${source}\n${url}\n${title}`).digest("hex").slice(0, 24);
 }
 
-export function beginCollection() {
-  db.exec("UPDATE notices SET active = 0");
-}
-
 export function upsertNotice(notice) {
   const id = notice.id || noticeId(notice.source, notice.url, notice.title);
   const timestamp = now();
@@ -182,6 +178,18 @@ export function upsertNotice(notice) {
     `).run(id, previous ? "changed" : "new", timestamp, timestamp);
   }
   return id;
+}
+
+export function markSourceCollectionComplete(source, activeIds) {
+  const ids = [...new Set(activeIds)];
+  if (!ids.length) {
+    return db.prepare("UPDATE notices SET active=0 WHERE source=?").run(source).changes;
+  }
+  const placeholders = ids.map(() => "?").join(", ");
+  return db.prepare(`
+    UPDATE notices SET active=0
+    WHERE source=? AND id NOT IN (${placeholders})
+  `).run(source, ...ids).changes;
 }
 
 export function activeNotices() {

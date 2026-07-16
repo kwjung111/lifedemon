@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { beginCollection, listHousingRules, upsertNotice } from "./db.mjs";
+import { listHousingRules, markSourceCollectionComplete, upsertNotice } from "./db.mjs";
 import { classify, extractDates } from "./classify.mjs";
 import { collectMyHomeApi } from "./myhome-api.mjs";
 
@@ -144,7 +144,6 @@ async function collectSource(context, source, rules) {
 }
 
 export async function collectAll() {
-  beginCollection();
   const rules = listHousingRules();
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ locale: "ko-KR", timezoneId: "Asia/Seoul" });
@@ -152,7 +151,8 @@ export async function collectAll() {
   try {
     try {
       const api = await collectMyHomeApi(rules);
-      for (const notice of api.notices) upsertNotice(notice);
+      const activeIds = api.notices.map((notice) => upsertNotice(notice));
+      if (!api.skipped) markSourceCollectionComplete("마이홈 API", activeIds);
       summary.push({ source: "마이홈 API", count: api.notices.length, skipped: api.skipped || undefined });
     } catch (error) {
       summary.push({ source: "마이홈 API", count: 0, error: error.message });
@@ -160,7 +160,8 @@ export async function collectAll() {
     for (const source of sources) {
       try {
         const notices = await collectSource(context, source, rules);
-        for (const notice of notices) upsertNotice(notice);
+        const activeIds = notices.map((notice) => upsertNotice(notice));
+        markSourceCollectionComplete(source.name, activeIds);
         summary.push({ source: source.name, count: notices.length });
       } catch (error) {
         summary.push({ source: source.name, count: 0, error: error.message });
