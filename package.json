@@ -11,7 +11,10 @@
     "bot": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/bot.mjs",
     "housing:daily": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/daily.mjs",
     "housing:diagnose": "node src/diagnose.mjs",
-    "check": "node --check src/bot.mjs && node --check src/daily.mjs"
+    "jobs:collect": "node src/admin/job-collect.mjs",
+    "jobs:filter": "node src/admin/job-filter.mjs",
+    "jobs:daily": "node src/jobs-daily.mjs",
+    "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/jobs-daily.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.1"

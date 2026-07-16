@@ -1,0 +1,11 @@
+[Unit]
+Description=Run job notice monitor weekdays at 09:20 KST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:20:00 Asia/Seoul
+Persistent=false
+RandomizedDelaySec=0
+Unit=jobs-daily.service
+
+[Install]
+WantedBy=timers.target
