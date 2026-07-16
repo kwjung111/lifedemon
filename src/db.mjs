@@ -336,6 +336,14 @@ export function pendingReviewNotices(limit = 3) {
   `).all(limit);
 }
 
+export function exhaustedReviewCount() {
+  return db.prepare(`
+    SELECT count(*) AS count
+    FROM review_queue q JOIN notices n ON n.id=q.notice_id
+    WHERE q.state='error' AND q.attempts>=3 AND n.active=1
+  `).get().count;
+}
+
 export function markReviewing(noticeIdValue) {
   db.prepare(`
     UPDATE review_queue SET state='reviewing', attempts=attempts+1, updated_at=?

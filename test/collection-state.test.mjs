@@ -6,7 +6,7 @@ import test from "node:test";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-collection-"));
 process.env.HOUSING_DATA_DIR = dataDir;
-const { db, markSourceCollectionComplete, upsertNotice } = await import("../src/db.mjs");
+const { db, exhaustedReviewCount, markSourceCollectionComplete, upsertNotice } = await import("../src/db.mjs");
 
 function notice(id, source = "마이홈 API") {
   return {
@@ -43,4 +43,11 @@ test("does not deactivate notices from another source", () => {
   markSourceCollectionComplete("마이홈 API", []);
 
   assert.equal(db.prepare("SELECT active FROM notices WHERE id='youth-a'").get().active, 1);
+});
+
+test("counts active reviews that exhausted all retries", () => {
+  upsertNotice(notice("failed-a"));
+  db.prepare("UPDATE review_queue SET state='error', attempts=3 WHERE notice_id='failed-a'").run();
+
+  assert.equal(exhaustedReviewCount(), 1);
 });
