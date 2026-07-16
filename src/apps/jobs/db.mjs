@@ -134,3 +134,7 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
   `).all().map((row) => row.last_error);
   return { counts: Object.fromEntries(counts.map((row) => [row.decision, Number(row.count)])), selected, failures };
 }
+
+export function activeJobCompanies(limit = 100) {
+  return jobDb.prepare("SELECT company, MAX(last_seen) AS last_seen FROM job_postings WHERE active=1 GROUP BY company ORDER BY last_seen DESC LIMIT ?").all(limit).map((row) => row.company);
+}
