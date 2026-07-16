@@ -8,6 +8,7 @@ export const platformDb = new DatabaseSync(`${dataDir}/platform.sqlite`);
 const db = platformDb;
 db.exec(`
   PRAGMA journal_mode = WAL;
+  PRAGMA busy_timeout = 5000;
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -28,20 +29,33 @@ db.exec(`
     fired_at TEXT,
     UNIQUE(module, entity_key, due_at)
   );
+
+  CREATE TABLE IF NOT EXISTS calendar_sync_leases (
+    calendar_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
 `);
 
-const reminderColumns = new Set(db.prepare("PRAGMA table_info(reminders)").all().map((column) => column.name));
-if (!reminderColumns.has("resolver")) db.exec("ALTER TABLE reminders ADD COLUMN resolver TEXT");
-if (!reminderColumns.has("metadata_json")) db.exec("ALTER TABLE reminders ADD COLUMN metadata_json TEXT");
-if (!reminderColumns.has("google_calendar_id")) db.exec("ALTER TABLE reminders ADD COLUMN google_calendar_id TEXT");
-if (!reminderColumns.has("google_event_id")) db.exec("ALTER TABLE reminders ADD COLUMN google_event_id TEXT");
-if (!reminderColumns.has("calendar_synced_at")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_synced_at TEXT");
-if (!reminderColumns.has("calendar_sync_error")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_sync_error TEXT");
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS reminders_google_event
-  ON reminders(google_calendar_id, google_event_id)
-  WHERE google_calendar_id IS NOT NULL AND google_event_id IS NOT NULL;
-`);
+db.exec("BEGIN IMMEDIATE");
+try {
+  const reminderColumns = new Set(db.prepare("PRAGMA table_info(reminders)").all().map((column) => column.name));
+  if (!reminderColumns.has("resolver")) db.exec("ALTER TABLE reminders ADD COLUMN resolver TEXT");
+  if (!reminderColumns.has("metadata_json")) db.exec("ALTER TABLE reminders ADD COLUMN metadata_json TEXT");
+  if (!reminderColumns.has("google_calendar_id")) db.exec("ALTER TABLE reminders ADD COLUMN google_calendar_id TEXT");
+  if (!reminderColumns.has("google_event_id")) db.exec("ALTER TABLE reminders ADD COLUMN google_event_id TEXT");
+  if (!reminderColumns.has("calendar_synced_at")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_synced_at TEXT");
+  if (!reminderColumns.has("calendar_sync_error")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_sync_error TEXT");
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS reminders_google_event
+    ON reminders(google_calendar_id, google_event_id)
+    WHERE google_calendar_id IS NOT NULL AND google_event_id IS NOT NULL;
+  `);
+  db.exec("COMMIT");
+} catch (error) {
+  db.exec("ROLLBACK");
+  throw error;
+}
 
 const now = () => new Date().toISOString();
 
@@ -54,6 +68,29 @@ export function setPlatformSetting(key, value) {
     INSERT INTO settings(key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value
   `).run(key, String(value));
+}
+
+export function acquireCalendarSyncLease(calendarId, owner, acquiredAt, expiresAt) {
+  return db.prepare(`
+    INSERT INTO calendar_sync_leases(calendar_id, owner, expires_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(calendar_id) DO UPDATE SET
+      owner=excluded.owner, expires_at=excluded.expires_at
+    WHERE calendar_sync_leases.expires_at<=?
+  `).run(calendarId, owner, expiresAt, acquiredAt).changes > 0;
+}
+
+export function renewCalendarSyncLease(calendarId, owner, expiresAt) {
+  return db.prepare(`
+    UPDATE calendar_sync_leases SET expires_at=?
+    WHERE calendar_id=? AND owner=?
+  `).run(expiresAt, calendarId, owner).changes > 0;
+}
+
+export function releaseCalendarSyncLease(calendarId, owner) {
+  return db.prepare(`
+    DELETE FROM calendar_sync_leases WHERE calendar_id=? AND owner=?
+  `).run(calendarId, owner).changes > 0;
 }
 
 export function createReminder({
@@ -130,6 +167,7 @@ export function remindersNeedingCalendarSync(calendarId) {
 
 export function markReminderCalendarSynced(id, {
   calendarId, eventId, syncedAt = now(), error = null,
+  expectedStatus = null, expectedUpdatedAt = null,
 } = {}) {
   return db.prepare(`
     UPDATE reminders
@@ -137,7 +175,20 @@ export function markReminderCalendarSynced(id, {
         google_event_id=COALESCE(?, google_event_id),
         calendar_synced_at=?, calendar_sync_error=?
     WHERE id=?
-  `).run(calendarId || null, eventId || null, syncedAt, error, id).changes > 0;
+      AND (? IS NULL OR status=?)
+      AND (? IS NULL OR updated_at=?)
+  `).run(
+    calendarId || null, eventId || null, syncedAt, error, id,
+    expectedStatus, expectedStatus, expectedUpdatedAt, expectedUpdatedAt,
+  ).changes > 0;
+}
+
+export function recordReminderCalendarEvent(id, calendarId, eventId) {
+  return db.prepare(`
+    UPDATE reminders
+    SET google_calendar_id=?, google_event_id=?
+    WHERE id=?
+  `).run(calendarId, eventId, id).changes > 0;
 }
 
 export function markReminderCalendarSyncFailed(id, message) {
@@ -152,7 +203,7 @@ export function upsertReminderFromCalendar({
 }) {
   const timestamp = syncedAt || now();
   const existing = db.prepare(`
-    SELECT id, status, updated_at, calendar_synced_at
+    SELECT id, status, updated_at, calendar_synced_at, metadata_json
     FROM reminders WHERE google_calendar_id=? AND google_event_id=?
   `).get(calendarId, eventId);
 
@@ -164,15 +215,24 @@ export function upsertReminderFromCalendar({
     const nextStatus = existing.status === "fired" && dueAt <= timestamp
       ? "fired"
       : "approved";
-    db.prepare(`
+    let existingMetadata = {};
+    try {
+      const parsed = JSON.parse(existing.metadata_json || "{}");
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) existingMetadata = parsed;
+    } catch { /* replace malformed legacy metadata with valid sync metadata */ }
+    const mergedMetadata = metadata
+      ? { ...existingMetadata, ...metadata }
+      : existingMetadata;
+    const result = db.prepare(`
       UPDATE reminders
       SET title=?, due_at=?, url=COALESCE(url, ?), metadata_json=?, status=?,
           calendar_synced_at=?, calendar_sync_error=NULL, updated_at=?
-      WHERE id=?
+      WHERE id=? AND status=? AND updated_at=?
     `).run(
-      title, dueAt, url, metadata ? JSON.stringify(metadata) : null, nextStatus,
-      timestamp, timestamp, existing.id,
+      title, dueAt, url, Object.keys(mergedMetadata).length ? JSON.stringify(mergedMetadata) : null, nextStatus,
+      timestamp, timestamp, existing.id, existing.status, existing.updated_at,
     );
+    if (!result.changes) return getReminder(existing.id);
     return getReminder(existing.id);
   }
 
@@ -195,5 +255,34 @@ export function cancelReminderFromCalendar(calendarId, eventId, syncedAt = now()
     UPDATE reminders
     SET status='cancelled', calendar_synced_at=?, calendar_sync_error=NULL, updated_at=?
     WHERE google_calendar_id=? AND google_event_id=?
+      AND NOT (
+        status='approved'
+        AND (calendar_synced_at IS NULL OR updated_at>calendar_synced_at)
+      )
   `).run(syncedAt, syncedAt, calendarId, eventId).changes > 0;
+}
+
+export function reconcileRemindersFromCalendarSnapshot({
+  calendarId, seenEventIds, windowStart, windowEnd, syncedAt = now(),
+}) {
+  const seen = new Set(seenEventIds);
+  const candidates = db.prepare(`
+    SELECT id, status, updated_at, calendar_synced_at, google_event_id
+    FROM reminders
+    WHERE google_calendar_id=? AND google_event_id IS NOT NULL
+      AND status='approved' AND due_at>=? AND due_at<=?
+  `).all(calendarId, windowStart, windowEnd);
+  let cancelled = 0;
+  for (const reminder of candidates) {
+    if (seen.has(reminder.google_event_id)) continue;
+    if (!reminder.calendar_synced_at || reminder.updated_at > reminder.calendar_synced_at) continue;
+    cancelled += db.prepare(`
+      UPDATE reminders
+      SET status='cancelled', calendar_synced_at=?, calendar_sync_error=NULL, updated_at=?
+      WHERE id=? AND status=? AND updated_at=?
+    `).run(
+      syncedAt, syncedAt, reminder.id, reminder.status, reminder.updated_at,
+    ).changes;
+  }
+  return cancelled;
 }

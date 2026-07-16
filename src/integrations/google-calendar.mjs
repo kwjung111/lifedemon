@@ -1,10 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
+  acquireCalendarSyncLease,
   cancelReminderFromCalendar,
   getPlatformSetting,
   markReminderCalendarSynced,
   markReminderCalendarSyncFailed,
+  recordReminderCalendarEvent,
+  reconcileRemindersFromCalendarSnapshot,
+  releaseCalendarSyncLease,
   remindersNeedingCalendarSync,
+  renewCalendarSyncLease,
   setPlatformSetting,
   upsertReminderFromCalendar,
 } from "../core/state.mjs";
@@ -12,6 +17,8 @@ import {
 const calendarApiRoot = "https://www.googleapis.com/calendar/v3";
 const oauthTokenUrl = "https://oauth2.googleapis.com/token";
 const defaultSyncIntervalMs = 60_000;
+const fullSyncIntervalMs = 7 * 86400_000;
+const syncLeaseDurationMs = 5 * 60_000;
 
 const clean = (value) => String(value || "").trim();
 
@@ -133,23 +140,32 @@ export function createGoogleCalendarClient({ config = googleCalendarConfig(), fe
   }
 
   async function request(path, { method = "GET", body, allowNotFound = false } = {}) {
-    const response = await fetchImpl(`${calendarApiRoot}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${await accessToken()}`,
-        ...(body ? { "content-type": "application/json" } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (allowNotFound && response.status === 404) return null;
-    const payload = response.status === 204 ? null : await response.json().catch(() => null);
-    if (!response.ok) {
-      const error = new Error(`Google Calendar HTTP ${response.status}`);
-      error.status = response.status;
-      throw error;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetchImpl(`${calendarApiRoot}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${await accessToken()}`,
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (response.status === 401 && attempt === 0) {
+        await response.arrayBuffer().catch(() => null);
+        token = null;
+        tokenExpiresAt = 0;
+        continue;
+      }
+      if (allowNotFound && response.status === 404) return null;
+      const payload = response.status === 204 ? null : await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = new Error(`Google Calendar HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
     }
-    return payload;
+    throw new Error("Google Calendar authentication retry failed");
   }
 
   const calendarPath = `/calendars/${encodeURIComponent(config.calendarId)}`;
@@ -186,14 +202,24 @@ export function createGoogleCalendarClient({ config = googleCalendarConfig(), fe
     },
   };
 }
-async function pullCalendarChanges(client, now) {
+async function pullCalendarChanges(client, now, renewLease = () => {}) {
   const tokenKey = `google_calendar_sync_token:${client.calendarId}`;
+  const fullSyncKey = `google_calendar_full_sync:${client.calendarId}`;
   let syncToken = getPlatformSetting(tokenKey);
+  const lastFullSync = Date.parse(getPlatformSetting(fullSyncKey, ""));
+  let performedFullSync = !syncToken
+    || Number.isNaN(lastFullSync)
+    || now.getTime() - lastFullSync >= fullSyncIntervalMs;
+  if (performedFullSync) syncToken = null;
   let pageToken = null;
   let imported = 0;
   let cancelled = 0;
+  const seenEventIds = new Set();
+  const windowStart = new Date(now.getTime() - 5 * 60_000).toISOString();
+  const windowEnd = new Date(now.getTime() + 366 * 86400_000).toISOString();
 
   for (;;) {
+    renewLease();
     let page;
     try {
       page = await client.listEvents({ syncToken, pageToken, now });
@@ -201,6 +227,7 @@ async function pullCalendarChanges(client, now) {
       if (error.status === 410 && syncToken) {
         setPlatformSetting(tokenKey, "");
         syncToken = null;
+        performedFullSync = true;
         pageToken = null;
         continue;
       }
@@ -209,6 +236,7 @@ async function pullCalendarChanges(client, now) {
 
     for (const event of page?.items || []) {
       if (!event?.id) continue;
+      if (performedFullSync) seenEventIds.add(event.id);
       if (event.status === "cancelled") {
         cancelled += cancelReminderFromCalendar(client.calendarId, event.id) ? 1 : 0;
         continue;
@@ -228,24 +256,38 @@ async function pullCalendarChanges(client, now) {
 
     pageToken = page?.nextPageToken || null;
     if (!pageToken) {
+      if (performedFullSync) {
+        cancelled += reconcileRemindersFromCalendarSnapshot({
+          calendarId: client.calendarId,
+          seenEventIds,
+          windowStart,
+          windowEnd,
+          syncedAt: now.toISOString(),
+        });
+      }
       if (page?.nextSyncToken) setPlatformSetting(tokenKey, page.nextSyncToken);
+      if (performedFullSync) setPlatformSetting(fullSyncKey, now.toISOString());
       break;
     }
   }
   return { imported, cancelled };
 }
 
-async function pushLocalChanges(client) {
+async function pushLocalChanges(client, renewLease = () => {}) {
   let created = 0;
   let updated = 0;
   let deleted = 0;
   const errors = [];
 
   for (const reminder of remindersNeedingCalendarSync(client.calendarId)) {
+    renewLease();
     try {
       if (reminder.status === "cancelled" && reminder.google_event_id) {
         await client.deleteEvent(reminder.google_event_id);
-        markReminderCalendarSynced(reminder.id, {});
+        markReminderCalendarSynced(reminder.id, {
+          expectedStatus: reminder.status,
+          expectedUpdatedAt: reminder.updated_at,
+        });
         deleted += 1;
       } else if (reminder.status === "approved") {
         const eventBody = reminderToEvent(reminder);
@@ -262,9 +304,12 @@ async function pushLocalChanges(client) {
         } else {
           event = await insertEventIdempotently(client, eventBody, eventId);
         }
+        recordReminderCalendarEvent(reminder.id, client.calendarId, event?.id || eventId);
         markReminderCalendarSynced(reminder.id, {
           calendarId: client.calendarId,
           eventId: event?.id || eventId,
+          expectedStatus: reminder.status,
+          expectedUpdatedAt: reminder.updated_at,
         });
         if (reminder.google_event_id) updated += 1;
         else created += 1;
@@ -281,9 +326,24 @@ export async function syncGoogleCalendar({ client = null, now = new Date(), env 
   const config = googleCalendarConfig(env);
   if (!client && !config.configured) return { skipped: true, reason: "not configured" };
   const activeClient = client || createGoogleCalendarClient({ config });
+  const leaseOwner = randomUUID();
+  const leaseExpiresAt = () => new Date(Date.now() + syncLeaseDurationMs).toISOString();
+  if (!acquireCalendarSyncLease(
+    activeClient.calendarId,
+    leaseOwner,
+    new Date().toISOString(),
+    leaseExpiresAt(),
+  )) {
+    return { skipped: true, reason: "sync already running" };
+  }
+  const renewLease = () => {
+    if (!renewCalendarSyncLease(activeClient.calendarId, leaseOwner, leaseExpiresAt())) {
+      throw new Error("Google Calendar sync lease was lost");
+    }
+  };
   try {
-    const pulled = await pullCalendarChanges(activeClient, now);
-    const pushed = await pushLocalChanges(activeClient);
+    const pulled = await pullCalendarChanges(activeClient, now, renewLease);
+    const pushed = await pushLocalChanges(activeClient, renewLease);
     const syncedAt = new Date().toISOString();
     setPlatformSetting("google_calendar_last_sync", syncedAt);
     setPlatformSetting(
@@ -294,5 +354,7 @@ export async function syncGoogleCalendar({ client = null, now = new Date(), env 
   } catch (error) {
     setPlatformSetting("google_calendar_last_error", error.message);
     throw error;
+  } finally {
+    releaseCalendarSyncLease(activeClient.calendarId, leaseOwner);
   }
 }

@@ -1,6 +1,5 @@
-import { spawn } from "node:child_process";
-
-const codexAuto = "/home/ubuntu/.local/bin/codex-auto";
+const responsesApiUrl = "https://api.openai.com/v1/responses";
+const defaultModel = "gpt-5-mini";
 
 function nowKstText(now = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", {
@@ -10,40 +9,53 @@ function nowKstText(now = new Date()) {
   }).format(now);
 }
 
-function parseJson(output) {
-  const cleaned = String(output || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Reminder AI did not return JSON");
-  return JSON.parse(cleaned.slice(start, end + 1));
-}
-
-function runCodex(prompt) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("/usr/bin/timeout", [
-      "90s", codexAuto, "--ephemeral", "--sandbox", "read-only", prompt,
-    ], {
-      cwd: "/data/crawler",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-4000); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Reminder AI failed (${code}): ${stderr.slice(-800)}`));
-        return;
-      }
-      try {
-        resolve(parseJson(stdout));
-      } catch (error) {
-        reject(new Error(`Reminder AI returned invalid JSON: ${error.message}`));
-      }
-    });
+export async function runReminderModel(prompt, {
+  env = process.env,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const apiKey = String(env.OPENAI_API_KEY || "").trim();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured for reminder parsing");
+  const response = await fetchImpl(responsesApiUrl, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: String(env.REMINDER_AI_MODEL || defaultModel),
+      input: prompt,
+      tools: [],
+      store: false,
+      max_output_tokens: 300,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "reminder_request",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              intent: { type: "string", enum: ["reminder", "needs_clarification", "not_reminder"] },
+              title: { type: ["string", "null"] },
+              due_at: { type: ["string", "null"] },
+              url: { type: ["string", "null"] },
+              clarification: { type: ["string", "null"] },
+            },
+            required: ["intent", "title", "due_at", "url", "clarification"],
+          },
+        },
+      },
+    }),
+    signal: AbortSignal.timeout(30_000),
   });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`Reminder AI HTTP ${response.status}`);
+  const output = payload?.output
+    ?.flatMap((item) => item?.content || [])
+    .find((item) => item?.type === "output_text")?.text;
+  if (!output) throw new Error("Reminder AI returned no structured output");
+  return JSON.parse(output);
 }
 
 export function looksLikeReminderRequest(text) {
@@ -82,7 +94,7 @@ Rules:
 - Use not_reminder only when this is clearly not a reminder request.`;
 }
 
-export async function parseReminderRequest(text, { now = new Date(), modelRunner = runCodex } = {}) {
+export async function parseReminderRequest(text, { now = new Date(), modelRunner = runReminderModel } = {}) {
   const result = await modelRunner(promptFor(text, now));
   if (!result || !["reminder", "needs_clarification", "not_reminder"].includes(result.intent)) {
     throw new Error("Reminder AI returned an invalid intent");

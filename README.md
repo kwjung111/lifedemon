@@ -78,12 +78,14 @@ JobPlanet must not be crawled: its published policy prohibits automated collecti
 ## Natural-language reminders
 
 The Telegram gateway accepts natural Korean reminder requests such as
-`내일 오후 3시에 병원 예약 알려줘`. Codex converts relative dates in the
+`내일 오후 3시에 병원 예약 알려줘`. A tool-free OpenAI Structured Outputs
+request converts relative dates in the
 `Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
 times cause a clarification question instead of a guessed schedule. The parsed
 time and title are shown with the existing approval buttons before registration.
 The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
-AI-free fallback.
+AI-free fallback. The bot service reads `OPENAI_API_KEY` from the separately
+protected `openai-api.env`; the model receives no shell or filesystem tools.
 
 ## Google Calendar sync
 
@@ -92,24 +94,46 @@ Calendar in both directions. A local approved reminder becomes a 30-minute
 calendar event at the reminder time. Creating, editing, or deleting an event in
 that calendar creates, updates, or cancels the matching local reminder.
 
-Create a dedicated calendar and an OAuth client with the Calendar scope
-`https://www.googleapis.com/auth/calendar`. Obtain a refresh token for the
-separate Google account that owns that calendar, then set the
+Create a Google OAuth **Desktop app** client with the Calendar scope
+`https://www.googleapis.com/auth/calendar.app.created`. This limits the token to
+secondary calendars created by this app instead of every calendar the account
+can access. For an external consent app, publish
+it to Production before final authorization; refresh tokens from Testing mode
+expire after seven days. An Internal Google Workspace app is also suitable.
+Obtain a refresh token for the separate Google account, then set the
 `GOOGLE_CALENDAR_*` values shown in `telegram.env.example`. Do not commit OAuth
 credentials. The one-time authorization helper accepts a private env file that
 contains `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`, opens a
-loopback OAuth callback, creates the dedicated `Life Daemon` calendar, and
-writes the complete private environment file:
+loopback OAuth callback and creates the dedicated `Life Daemon` calendar. Run
+this helper on the desktop where the browser opens, not on the remote server:
 
 ```sh
 node --env-file=/path/to/oauth-client.env \
-  src/admin/authorize-google-calendar.mjs /path/to/google-calendar.env
+  src/admin/authorize-google-calendar.mjs data/google-calendar.env
 ```
 
-Open the URL written to the adjacent `.auth-url` file and approve access with
-the calendar owner account. Restart `monitor-reminder.service`, then use `/calendar` in
-Telegram to check the last synchronization state. A one-off synchronization can
-be run with `npm run calendar:sync` on the server.
+Open the URL written next to the output file and approve access with the
+calendar owner account. Reusing the same output file reuses the existing
+calendar instead of creating a duplicate. Copy the generated file to a private
+temporary path on the server, then merge only its Google settings into the
+service environment (existing Telegram, MyHome, and profile values are
+preserved):
+
+```sh
+node src/admin/install-google-calendar-env.mjs \
+  /private/tmp/google-calendar.env \
+  /home/ubuntu/.config/monitor-platform/telegram.env
+```
+
+Both helpers force their output to mode `0600`. Remove the temporary upload,
+restart `monitor-telegram-bot.service` and `monitor-reminder.service`, then use
+`/calendar` in Telegram to check the last synchronization state. A one-off
+synchronization can be run with `npm run calendar:sync` on the server.
+
+The installer refuses to replace an existing calendar ID. If the dedicated
+calendar was deleted, migrate or clear its existing reminder mappings before
+installing credentials for a replacement calendar; otherwise future reminders
+would remain attached to the deleted calendar.
 
 If `GOOGLE_CALENDAR_ENABLED` is false or any credential is missing, the existing
 reminder bot continues without Calendar access.

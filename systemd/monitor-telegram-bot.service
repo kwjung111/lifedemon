@@ -8,6 +8,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/data/crawler
 EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
+EnvironmentFile=-/home/ubuntu/.config/monitor-platform/openai-api.env
 ExecStart=/usr/local/bin/node /data/crawler/src/bot.mjs
 Restart=always
 RestartSec=5

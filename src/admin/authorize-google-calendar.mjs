@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { unlink, writeFile } from "node:fs/promises";
+import { chmod, readFile, unlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { googleCalendarValues, mergeGoogleCalendarEnv } from "./google-calendar-env.mjs";
 
 const clientId = String(process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
 const clientSecret = String(process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
@@ -29,16 +30,16 @@ authorizeUrl.search = new URLSearchParams({
   client_id: clientId,
   redirect_uri: redirectUri,
   response_type: "code",
-  scope: "https://www.googleapis.com/auth/calendar",
+  scope: "https://www.googleapis.com/auth/calendar.app.created",
   access_type: "offline",
   prompt: "consent",
-  include_granted_scopes: "true",
   state,
   code_challenge: challenge,
   code_challenge_method: "S256",
 }).toString();
 
 await writeFile(`${outputPath}.auth-url`, String(authorizeUrl), { mode: 0o600 });
+await chmod(`${outputPath}.auth-url`, 0o600);
 console.log(`AUTH_URL_FILE=${outputPath}.auth-url`);
 
 const callback = new Promise((resolve, reject) => {
@@ -84,30 +85,50 @@ try {
     throw new Error(`Google OAuth token exchange failed (${tokenResponse.status})`);
   }
 
-  const calendarResponse = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token.access_token}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ summary: "Life Daemon", timeZone: "Asia/Seoul" }),
-    signal: AbortSignal.timeout(30_000),
+  const existingEnv = await readFile(outputPath, "utf8").catch((error) => {
+    if (error.code === "ENOENT") return "";
+    throw error;
   });
-  const calendar = await calendarResponse.json().catch(() => null);
-  if (!calendarResponse.ok || !calendar?.id) {
-    throw new Error(`Google Calendar creation failed (${calendarResponse.status})`);
+  const existingCalendarId = googleCalendarValues(existingEnv).GOOGLE_CALENDAR_ID;
+  let calendar = null;
+  if (existingCalendarId) {
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(existingCalendarId)}`,
+      {
+        headers: { authorization: `Bearer ${token.access_token}` },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    if (response.ok) calendar = await response.json();
+    else if (response.status !== 404) throw new Error(`Google Calendar lookup failed (${response.status})`);
+  }
+  if (!calendar) {
+    const calendarResponse = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ summary: "Life Daemon", timeZone: "Asia/Seoul" }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    calendar = await calendarResponse.json().catch(() => null);
+    if (!calendarResponse.ok || !calendar?.id) {
+      throw new Error(`Google Calendar creation failed (${calendarResponse.status})`);
+    }
   }
 
-  const env = [
+  const googleLines = [
     "GOOGLE_CALENDAR_ENABLED=true",
     `GOOGLE_CALENDAR_ID=${calendar.id}`,
     `GOOGLE_OAUTH_CLIENT_ID=${clientId}`,
     `GOOGLE_OAUTH_CLIENT_SECRET=${clientSecret}`,
     `GOOGLE_OAUTH_REFRESH_TOKEN=${token.refresh_token}`,
     "GOOGLE_CALENDAR_SYNC_INTERVAL_MS=60000",
-    "",
-  ].join("\n");
+  ];
+  const env = mergeGoogleCalendarEnv(existingEnv, googleLines);
   await writeFile(outputPath, env, { mode: 0o600 });
+  await chmod(outputPath, 0o600);
   console.log(`AUTHORIZED_ENV=${outputPath}`);
 } finally {
   server.close();
