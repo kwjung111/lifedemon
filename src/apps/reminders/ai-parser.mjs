@@ -33,8 +33,15 @@ function runCodex(prompt) {
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-4000); });
     child.on("error", reject);
     child.on("close", (code) => {
-      if (code === 0) resolve(parseJson(stdout));
-      else reject(new Error(`Reminder AI failed (${code}): ${stderr.slice(-800)}`));
+      if (code !== 0) {
+        reject(new Error(`Reminder AI failed (${code}): ${stderr.slice(-800)}`));
+        return;
+      }
+      try {
+        resolve(parseJson(stdout));
+      } catch (error) {
+        reject(new Error(`Reminder AI returned invalid JSON: ${error.message}`));
+      }
     });
   });
 }

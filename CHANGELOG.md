@@ -9,6 +9,10 @@
 - Natural-language Korean reminder parsing with explicit clarification for missing dates or times.
 - Telegram `/calendar` status reporting and a one-off `calendar:sync` command.
 
+### Fixed
+
+- Malformed Codex reminder JSON now fails only the current Telegram request instead of crashing the bot process.
+
 ## 1.1.3 - 2026-07-16
 
 ### Fixed
