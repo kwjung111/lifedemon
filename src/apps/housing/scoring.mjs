@@ -62,9 +62,8 @@ export function normalizeAssessment(result) {
     selection_chance: component(result.value_breakdown?.selection_chance, SCORE_RUBRIC.selection_chance),
     execution: component(result.value_breakdown?.execution, SCORE_RUBRIC.execution),
   };
-  const score = eligibility === "yes" && evidenceStatus === "complete"
-    ? Object.values(breakdown).reduce((sum, item) => sum + item.score, 0)
-    : null;
+  const computedScore = Object.values(breakdown).reduce((sum, item) => sum + item.score, 0);
+  const score = eligibility === "no" ? null : computedScore;
 
   return {
     eligibility,
@@ -91,6 +90,12 @@ export function normalizeAssessment(result) {
 export function scoreLabel(result) {
   if (!result) return null;
   if (result.eligibility === "no") return "신청 불가";
-  if (result.eligibility !== "yes" || result.score == null) return "자격 확인 필요";
-  return `추천 ${result.score}점`;
+  const breakdownScore = Object.values(result.value_breakdown || {})
+    .reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
+  const score = result.score == null ? breakdownScore : Number(result.score);
+  const confirmed = result.eligibility === "yes"
+    && result.evidence_status === "complete"
+    && !(result.critical_unknowns?.length)
+    && !(result.evidence_gaps?.length);
+  return confirmed ? `추천 ${score}점` : `추천 ${score}점 (추정)`;
 }

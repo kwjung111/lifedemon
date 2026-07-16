@@ -63,7 +63,7 @@ npm run housing:daily
 ## Housing decision engine
 
 - Keep the private profile outside Git and point `HOUSING_USER_PROFILE_FILE` at the mode-600 JSON file.
-- A numeric recommendation is shown only after eligibility and official evidence are complete. Otherwise the digest lists the missing user conditions and official evidence gaps.
+- A confirmed recommendation is shown after eligibility and official evidence are complete. Otherwise the digest keeps the component total with an explicit `(추정)` label and lists the missing conditions and evidence gaps.
 - Profile changes automatically invalidate active reviews. Exact profile values are removed before AI results are stored or sent to Telegram.
 - PDF extraction uses Poppler. Image-only PDFs can use `pdftoppm`, `pdfinfo`, and Tesseract with `kor+eng` language data when installed.
 

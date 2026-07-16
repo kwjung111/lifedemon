@@ -143,7 +143,7 @@ test("profile change requeues active candidates and invalidates old review join"
     summary: "1990-01-02 신청자", cautions: [], evidence: [], needs: [],
   });
   assert.equal(JSON.parse(db.prepare("SELECT result_json FROM notice_reviews").get().result_json).summary, "[개인정보] 신청자");
-  assert.equal(activeNotices()[0].ai_score, null);
+  assert.equal(activeNotices()[0].ai_score, 50);
 
   writeFileSync(profileFile, JSON.stringify({ birthDate: "1990-01-02", annualIncome: 38_000_000 }));
   const requeued = pendingReviewNotices();

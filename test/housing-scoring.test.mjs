@@ -9,18 +9,33 @@ const breakdown = {
   execution: { score: 25, reasons: ["접수 여유"] },
 };
 
-test("hides the total score until eligibility and evidence are complete", () => {
+test("labels a component score as estimated while eligibility or evidence is uncertain", () => {
   const result = normalizeAssessment({
     eligibility: "uncertain",
     score: 99,
     evidence_status: "partial",
     evidence_gaps: ["소득 기준"],
     critical_unknowns: ["소득 기준"],
-    value_breakdown: breakdown,
+    value_breakdown: {
+      housing_value: { subscores: { transit_access: { score: 15, reasons: ["교통 근거"] } } },
+    },
   });
 
-  assert.equal(result.score, null);
-  assert.equal(scoreLabel(result), "자격 확인 필요");
+  assert.equal(result.score, 15);
+  assert.equal(scoreLabel(result), "추천 15점 (추정)");
+});
+
+test("derives an estimated label from legacy stored breakdowns with a null score", () => {
+  assert.equal(scoreLabel({
+    eligibility: "uncertain",
+    evidence_status: "partial",
+    score: null,
+    value_breakdown: {
+      housing_value: { score: 25 },
+      selection_chance: { score: 10 },
+      execution: { score: 13 },
+    },
+  }), "추천 48점 (추정)");
 });
 
 test("computes the total from bounded components only for a confirmed candidate", () => {
@@ -64,7 +79,7 @@ test("downgrades a claimed yes when a critical condition is unknown", () => {
   });
 
   assert.equal(result.eligibility, "uncertain");
-  assert.equal(result.score, null);
+  assert.equal(scoreLabel(result), "추천 0점 (추정)");
 });
 
 test("does not trust a complete claim while retrieval gaps remain", () => {
@@ -77,7 +92,7 @@ test("does not trust a complete claim while retrieval gaps remain", () => {
   });
 
   assert.equal(result.evidence_status, "partial");
-  assert.equal(result.score, null);
+  assert.equal(scoreLabel(result), "추천 0점 (추정)");
 });
 
 test("drops arbitrary model fields outside the persisted assessment schema", () => {
