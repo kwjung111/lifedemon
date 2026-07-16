@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2 - 2026-07-16
+
+### Changed
+
+- Single-user assessment output now keeps relevant exact profile values instead of replacing them with privacy placeholders.
+
 ## 1.1.1 - 2026-07-16
 
 ### Changed

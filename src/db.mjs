@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import {
   housingProfileFingerprint,
   loadHousingProfile,
-  redactHousingProfileValues,
 } from "./apps/housing/profile.mjs";
 
 const dataDir = process.env.HOUSING_DATA_DIR || "/data/crawler/data";
@@ -202,7 +201,7 @@ function syncHousingProfile() {
 
 syncHousingProfile();
 
-export const HOUSING_REVIEW_POLICY_VERSION = "2";
+export const HOUSING_REVIEW_POLICY_VERSION = "3";
 
 export function syncHousingReviewPolicy() {
   const previous = db.prepare("SELECT value FROM settings WHERE key='housing_review_policy_version'").get()?.value;
@@ -519,8 +518,8 @@ export function markReviewing(noticeIdValue) {
 
 export function saveNoticeReview(notice, result, model = "codex-chatgpt") {
   const timestamp = now();
-  const { profile, fingerprint } = syncHousingProfile();
-  const safeResult = redactHousingProfileValues(result, profile);
+  const { fingerprint } = syncHousingProfile();
+  const safeResult = result;
   db.exec("BEGIN IMMEDIATE");
   try {
     const currentNotice = db.prepare("SELECT content_hash FROM notices WHERE id=?").get(notice.id);

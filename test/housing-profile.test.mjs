@@ -30,8 +30,7 @@ const {
   syncHousingReviewPolicy, upsertNotice,
 } = await import("../src/db.mjs");
 const {
-  containsHousingProfileValues, housingProfileFingerprint, redactHousingProfileValues,
-  requireHousingProfile, validateHousingProfile,
+  housingProfileFingerprint, requireHousingProfile, validateHousingProfile,
 } = await import("../src/apps/housing/profile.mjs");
 
 test.after(() => {
@@ -62,78 +61,6 @@ test("migrates legacy review scores to nullable without losing the table", () =>
   assert.ok(db.prepare("PRAGMA table_info(notice_reviews)").all().some((column) => column.name === "policy_version"));
 });
 
-test("redacts exact private profile values from nested AI output", () => {
-  const profile = { birthDate: "1990-01-02", annualIncome: 37_000_000 };
-  const result = { summary: "생년월일 1990-01-02, 소득 37,000,000원", evidence: ["공고 사실"] };
-  assert.equal(containsHousingProfileValues(result, profile), true);
-  assert.deepEqual(redactHousingProfileValues(result, profile), {
-    summary: "생년월일 [개인정보], 소득 [개인정보]원", evidence: ["공고 사실"],
-  });
-});
-
-test("redacts Korean date and amount variants instead of only exact JSON values", () => {
-  const profile = {
-    birthDate: "1990-01-02",
-    annualIncome: 37_000_000,
-    stocks: 51_000_000,
-  };
-  const result = {
-    summary: "1990년 1월 2일생, 연봉 3,700만원, 주식 5,100만원인 신청자",
-  };
-  assert.deepEqual(redactHousingProfileValues(result, profile), {
-    summary: "[개인정보]생, 연봉 [개인정보], 주식 [개인정보]인 신청자",
-  });
-});
-
-test("removes transformed private facts that cannot be covered by exact variants", () => {
-  const profile = { birthDate: "1990-01-02", annualIncome: 37_000_000, stocks: 51_000_000 };
-  const result = {
-    summary: "신청자는 만 36세이고 연봉 삼천칠백만원이다",
-    cautions: ["본인 주식은 오천백만원"],
-    evidence: ["사용자 프로필상 자격 충족"],
-    costs: "공식 임대보증금 48,000,000원",
-  };
-  assert.deepEqual(redactHousingProfileValues(result, profile), {
-    summary: "[개인정보 관련 판정은 원문 값을 숨김]",
-    cautions: ["[개인정보 관련 판정은 원문 값을 숨김]"],
-    evidence: ["[개인정보 관련 판정 제외]"],
-    costs: "공식 임대보증금 48,000,000원",
-  });
-});
-
-test("redacts derived age, partial birthday, and word-form income in visible fields", () => {
-  const result = {
-    summary: "만 36세로 청년 기준 충족",
-    target_conditions: "1월 2일생으로 연령 기준 충족",
-    income_assets: "삼천칠백만원으로 기준 확인 필요",
-  };
-  assert.deepEqual(redactHousingProfileValues(result, { birthDate: "1990-01-02", income: 37_000_000 }), {
-    summary: "[개인정보 관련 판정은 원문 값을 숨김]",
-    target_conditions: "[개인정보 관련 판정은 원문 값을 숨김]",
-    income_assets: "[개인정보 관련 판정은 원문 값을 숨김]",
-  });
-});
-
-test("redacts short private location values", () => {
-  assert.deepEqual(
-    redactHousingProfileValues({ summary: "직장은 테스트동이지만 변경 예정" }, { workplace: "테스트동" }),
-    { summary: "직장은 [개인정보]이지만 변경 예정" },
-  );
-});
-
-test("redacts transformed private facts in nested scoring reasons and follow-up purposes", () => {
-  const result = {
-    value_breakdown: { housing_value: { reasons: ["신청자는 만 36세이고 연봉 삼천칠백만원, 테스트동 근무"] } },
-    needs: [{ purpose: "만 36세 신청자 확인" }],
-  };
-  assert.deepEqual(redactHousingProfileValues(result, {
-    birthDate: "1990-01-02", annualIncome: 37_000_000, workplace: "테스트동",
-  }), {
-    value_breakdown: { housing_value: { reasons: ["[개인정보 관련 판정은 원문 값을 숨김]"] } },
-    needs: [{ purpose: "[개인정보 관련 판정은 원문 값을 숨김]" }],
-  });
-});
-
 test("profile change requeues active candidates and invalidates old review join", () => {
   upsertNotice(fixture());
   const notice = pendingReviewNotices()[0];
@@ -142,7 +69,7 @@ test("profile change requeues active candidates and invalidates old review join"
     eligibility: "uncertain", score: 50, status: "open",
     summary: "1990-01-02 신청자", cautions: [], evidence: [], needs: [],
   });
-  assert.equal(JSON.parse(db.prepare("SELECT result_json FROM notice_reviews").get().result_json).summary, "[개인정보] 신청자");
+  assert.equal(JSON.parse(db.prepare("SELECT result_json FROM notice_reviews").get().result_json).summary, "1990-01-02 신청자");
   assert.equal(activeNotices()[0].ai_score, 50);
 
   writeFileSync(profileFile, JSON.stringify({ birthDate: "1990-01-02", annualIncome: 38_000_000 }));
