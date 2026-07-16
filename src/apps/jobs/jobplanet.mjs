@@ -10,7 +10,7 @@ const statePath = () => process.env.JOBPLANET_STORAGE_STATE_FILE || "/data/crawl
 export function parseJobPlanetCompanyCard(text, requestedCompany) {
   const raw = clean(text);
   const normalized = normalizeCompanyName(requestedCompany);
-  const ratingMatch = raw.match(/(?:^|\s)([0-5](?:\.\d)?)(?=\s*(?:IT\/|제조|금융|서비스|유통|교육|미디어|건설|서울|경기|인천|부산|대구|대전|광주|울산))/);
+  const ratingMatch = raw.match(/([0-5](?:\.\d)?)(?=(?:IT\/|제조|금융|서비스|유통|교육|미디어|건설|서울|경기|인천|부산|대구|대전|광주|울산))/);
   const employeeMatch = raw.match(/(\d[\d,]*)명/);
   if (!normalized || !ratingMatch || !employeeMatch) return null;
   return {
