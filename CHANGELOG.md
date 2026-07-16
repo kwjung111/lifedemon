@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-07-16
+
+### Changed
+
+- Telegram now displays incomplete recommendation totals with an explicit `(추정)` label instead of hiding them.
+
 ## 1.1.0 - 2026-07-16
 
 ### Added

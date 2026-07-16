@@ -521,7 +521,6 @@ export function saveNoticeReview(notice, result, model = "codex-chatgpt") {
   const timestamp = now();
   const { profile, fingerprint } = syncHousingProfile();
   const safeResult = redactHousingProfileValues(result, profile);
-  if (safeResult.eligibility !== "yes") safeResult.score = null;
   db.exec("BEGIN IMMEDIATE");
   try {
     const currentNotice = db.prepare("SELECT content_hash FROM notices WHERE id=?").get(notice.id);
@@ -549,7 +548,7 @@ export function saveNoticeReview(notice, result, model = "codex-chatgpt") {
         policy_version=excluded.policy_version
     `).run(
       notice.id, notice.content_hash, safeResult.eligibility,
-      safeResult.eligibility === "yes" && safeResult.score != null
+      safeResult.score != null
         ? Math.max(0, Math.min(100, Number(safeResult.score) || 0))
         : null,
       safeResult.status || "review", JSON.stringify(safeResult), model, timestamp, fingerprint,

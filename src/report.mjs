@@ -109,7 +109,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     currentPage.notices.push(notice);
   }
   for (const page of pages) {
-    page.lines.push("", "※ AI는 공식 자료 근거만 사용하며, 자격이 불확실하면 점수를 숨깁니다.");
+    page.lines.push("", "※ 자격·공식 근거가 불확실한 점수는 ‘(추정)’으로 표시합니다.");
     page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 2026-08-10 발표’");
     const keyboard = page.notices.map((notice, index) => [
       { text: `${index + 1} ✅`, callback_data: `h:ap:${notice.id}` },

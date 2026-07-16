@@ -18,7 +18,7 @@ Housing has a version-controlled base instruction in `src/apps/housing/instructi
 
 Housing discovery is a thin completeness sensor. New or changed likely/possible notices enter `review_queue`. The AI reviewer reads untrusted official content as evidence, may request up to two follow-ups, and the orchestrator fulfills those requests only through an HTTPS official-domain allowlist. Missing critical fields force a title-based official detail search even when the model does not request one. Structured reviews and content hashes are retained in SQLite; unchanged notices do not consume another AI call.
 
-Housing decisions separate hard eligibility from practical value. A total recommendation score is shown only when eligibility and official evidence are complete. The score is calculated from bounded components: housing value (40), selection chance (30), and execution readiness (30). Uncertain notices show their critical user facts and missing official evidence instead of a misleading number.
+Housing decisions separate hard eligibility from practical value. The score is calculated from bounded components: housing value (40), selection chance (30), and execution readiness (30). When eligibility or official evidence remains uncertain, Telegram retains the component total but labels it `(추정)` and shows the critical user facts and missing official evidence.
 
 The private housing profile is loaded from `HOUSING_USER_PROFILE_FILE` and is never committed. A canonical fingerprint, not the profile itself, is stored with reviews. Changing the profile automatically invalidates and requeues active candidate reviews. Exact private values are removed from persisted AI output before it can reach SQLite or Telegram.
 
