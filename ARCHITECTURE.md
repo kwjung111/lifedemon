@@ -6,11 +6,11 @@ Life Daemon is a personal automation platform, not a single-purpose housing bot.
 
 - `src/core/`: Telegram polling, authorization, routing, retries, and other shared runtime concerns.
 - `src/apps/housing/`: Housing-specific commands and interactions.
-- `src/apps/jobs/`: Future job-notice collectors, filters, reports, and interaction state.
+- `src/apps/jobs/`: Job-notice collectors, company verification, profile filtering, reports, and interaction state.
 - `src/apps/reminders/`: Global event proposals, approval, listing, and delivery shared by every app.
 - `src/telegram.mjs`: Shared Telegram client. It has no housing or jobs business rules.
 - `src/bot.mjs`: Composition root. It registers enabled app modules with the shared runtime.
-- `data/platform.sqlite`: Shared gateway checkpoints only; app data stays in app-owned databases.
+- `data/platform.sqlite`: Shared gateway settings, reminder state, Calendar mappings, and synchronization leases; domain-specific housing and job data stay in app-owned databases.
 
 Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
 

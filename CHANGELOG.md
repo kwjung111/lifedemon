@@ -5,7 +5,7 @@
 ### Added
 
 - Optional bidirectional synchronization between approved reminders and a dedicated Google Calendar.
-- One-time OAuth bootstrap that creates the private calendar and safely updates the mode-600 service environment file without removing existing secrets.
+- A one-time OAuth and installation flow that creates the private calendar and safely updates the mode-600 service environment without removing existing secrets.
 - Natural-language Korean reminder parsing with explicit clarification for missing dates or times.
 - Telegram `/calendar` status reporting and a one-off `calendar:sync` command.
 

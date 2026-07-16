@@ -10,15 +10,18 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - 사용자 제외 규칙 저장
 - 전역 리마인더 등록·승인·발송
 - 발표 시점의 공식 결과 링크 동적 탐색
+- 공개 채용 공고 수집, 검증된 기업 필터링, Telegram 브리핑
+- 한국어 자연어 리마인더와 전용 Google Calendar 양방향 동기화
 - systemd 기반 상시 실행과 평일 스케줄링
 
-향후 채용 공고, 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
+향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
 
 ## Requirements
 
 - Node.js 22 이상
 - Playwright Chromium
 - Telegram bot token
+- 자연어 리마인더 사용 시 OpenAI API key
 
 ## Setup
 
@@ -59,6 +62,7 @@ JobPlanet must not be crawled: its published policy prohibits automated collecti
 
 - `src/core/`: Telegram 라우팅과 플랫폼 상태
 - `src/apps/housing/`: 주거 도메인 명령과 공식 링크 탐색
+- `src/apps/jobs/`: 채용 공고 수집, 기업 검증, 사용자 적합도 필터링
 - `src/apps/reminders/`: 전역 이벤트·리마인더
 - `src/collect.mjs`: 주거 공고 수집
 - `src/bot.mjs`: 활성 모듈을 조립하는 진입점
