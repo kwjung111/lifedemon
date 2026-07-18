@@ -12,10 +12,15 @@ export const publicJobSources = [
     },
   },
   {
-    name: "wanted", listUrl: () => "https://www.wanted.co.kr/wdlist?country=kr&job_sort=job.latest_order",
+    name: "wanted",
+    listUrl: (query) => `https://www.wanted.co.kr/search?query=${encodeURIComponent(query)}&tab=position`,
     detailPath: /\/wd\/\d+/, requiresSession: true,
   },
-  { name: "jobkorea", listUrl: () => "https://www.jobkorea.co.kr/recruit/joblist", detailPath: /\/Recruit\/GI_Read\//i },
+  {
+    name: "jobkorea",
+    listUrl: (query) => `https://www.jobkorea.co.kr/Search/?stext=${encodeURIComponent(query)}`,
+    detailPath: /\/Recruit\/GI_Read\//i,
+  },
 ];
 
 export function linksForSource(source, anchors, query = "") {
@@ -36,10 +41,15 @@ export function normalizePublicJob(source, detail) {
   const title = clean(detail.title);
   const company = clean(detail.company);
   if (!title || !company || !detail.url) return null;
+  const url = new URL(detail.url);
+  if (source.name === "jobkorea") {
+    url.search = "";
+    url.hash = "";
+  }
   return {
     source: source.name,
-    externalId: detail.url.match(/\/(?:posting|wd)\/(\d+)/i)?.[1] || null,
-    company, title, url: detail.url,
+    externalId: detail.url.match(/\/(?:posting|wd)\/(\d+)|\/GI_Read\/(\d+)/i)?.slice(1).find(Boolean) || null,
+    company, title, url: url.href,
     location: clean(detail.location) || null,
     experience: clean(detail.experience) || null,
     rawText: clean(detail.rawText),
@@ -52,6 +62,13 @@ export function inferCompany(sourceName, pageTitle, rawText = "") {
   if (sourceName === "wanted") return clean(title.split(/\s+-\s+/)[0]);
   if (sourceName === "jobkorea") return clean(title.match(/^(.+?)\s+채용\s*[-|｜]/)?.[1]);
   return clean(rawText.split(/\n+/)[0]);
+}
+
+export function inferJobTitle(sourceName, pageTitle, heading = "") {
+  if (clean(heading)) return clean(heading);
+  const title = clean(pageTitle).replace(/\s*[|｜]\s*(원티드|잡코리아|리멤버).*$/i, "");
+  if (sourceName === "jobkorea") return clean(title.replace(/^.+?\s+채용\s*-\s*/, ""));
+  return title;
 }
 
 export function inferJobMetadata(bodyText) {
@@ -77,7 +94,8 @@ async function extractDetail(page, href, source) {
   const pageTitle = clean(await page.locator('meta[property="og:title"]').getAttribute("content").catch(() => "")) || clean(await page.title());
   // Do not guess from arbitrary body text: an unknown company is safer than an incorrect pass.
   const company = inferCompany(source.name, pageTitle, rawText);
-  const title = clean(await page.locator("h1").first().textContent().catch(() => "")) || clean(await page.title());
+  const heading = await page.locator("h1").first().textContent().catch(() => "");
+  const title = inferJobTitle(source.name, pageTitle, heading);
   const metadata = inferJobMetadata(bodyText);
   return normalizePublicJob(source, { url: page.url(), company, title, rawText,
     ...metadata,
@@ -100,7 +118,7 @@ export async function mapWithConcurrency(items, concurrency, worker) {
 
 export async function collectPublicJobSource(source, { query = "", maxDetails = 50, detailConcurrency = 4 } = {}) {
   if (source.requiresSession && !process.env.WANTED_STORAGE_STATE_FILE) {
-    throw new Error("wanted requires WANTED_STORAGE_STATE_FILE from an already logged-in session");
+    throw new Error("wanted requires WANTED_STORAGE_STATE_FILE from an authorized logged-in session");
   }
   const browser = await chromium.launch({ headless: true });
   try {
@@ -112,6 +130,11 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
     const response = await page.goto(source.listUrl(query), { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (!response || response.status() >= 400) throw new Error(`${source.name} listing HTTP ${response?.status()}`);
     await page.waitForTimeout(1_000);
+    await page.waitForFunction(
+      (pattern) => [...document.querySelectorAll("a")].some((anchor) => new RegExp(pattern, "i").test(anchor.href)),
+      source.detailPath.source,
+      { timeout: 12_000 },
+    ).catch(() => {});
     const links = linksForSource(source, await anchorsOn(page), query);
     const details = await mapWithConcurrency(links.slice(0, maxDetails), detailConcurrency, async (link) => {
       const detail = await context.newPage();

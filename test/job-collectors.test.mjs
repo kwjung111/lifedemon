@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inferCompany, inferJobMetadata, linksForSource, mapWithConcurrency, publicJobSources } from "../src/apps/jobs/collectors.mjs";
+import { inferCompany, inferJobMetadata, inferJobTitle, linksForSource, mapWithConcurrency, normalizePublicJob, publicJobSources } from "../src/apps/jobs/collectors.mjs";
 
 test("limits detail work while preserving each result position", async () => {
   let active = 0;
@@ -25,6 +25,25 @@ test("keeps only public detail URLs for each source", () => {
   assert.deepEqual(links, [{ href: "https://www.wanted.co.kr/wd/123", text: "DevOps" }]);
 });
 
+test("uses query-specific search pages and keeps Wanted session-gated", () => {
+  const wanted = publicJobSources.find((source) => source.name === "wanted");
+  const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
+  assert.equal(wanted.requiresSession, true);
+  assert.equal(wanted.listUrl("DevOps"), "https://www.wanted.co.kr/search?query=DevOps&tab=position");
+  assert.equal(jobkorea.listUrl("SRE 엔지니어"), "https://www.jobkorea.co.kr/Search/?stext=SRE%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4");
+});
+
+test("canonicalizes JobKorea detail URLs and keeps the posting id", () => {
+  const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
+  const job = normalizePublicJob(jobkorea, {
+    title: "DevOps 엔지니어", company: "좋은회사",
+    url: "https://www.jobkorea.co.kr/Recruit/GI_Read/49220858?Oem_Code=C1&stext=DevOps",
+    rawText: "공고 본문",
+  });
+  assert.equal(job.url, "https://www.jobkorea.co.kr/Recruit/GI_Read/49220858");
+  assert.equal(job.externalId, "49220858");
+});
+
 test("keeps only matching listing cards when a discovery query is supplied", () => {
   const wanted = publicJobSources.find((source) => source.name === "wanted");
   const links = linksForSource(wanted, [
@@ -38,6 +57,14 @@ test("derives companies only from source title formats", () => {
   assert.equal(inferCompany("remember", "좋은회사 채용 | 데브옵스 엔지니어"), "좋은회사");
   assert.equal(inferCompany("wanted", "좋은회사 - DevOps Engineer | 원티드"), "좋은회사");
   assert.equal(inferCompany("jobkorea", "좋은회사 채용 - DevOps Engineer | 잡코리아"), "좋은회사");
+});
+
+test("removes JobKorea company and site chrome from fallback titles", () => {
+  assert.equal(
+    inferJobTitle("jobkorea", "좋은회사 채용 - DevOps 엔지니어 | 잡코리아"),
+    "DevOps 엔지니어",
+  );
+  assert.equal(inferJobTitle("jobkorea", "무시", "직접 표시된 제목"), "직접 표시된 제목");
 });
 
 test("extracts short location and experience lines without using the whole job description", () => {
