@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2 - 2026-07-18
+
+### Fixed
+
+- Job discovery now uses query-specific public Wanted and JobKorea search pages instead of requiring a Wanted session or opening an unrelated JobKorea listing.
+- JobKorea tracking parameters are removed before deduplication.
+- Automated JobPlanet login and scraping is removed from the daily pipeline; only manually supplied or separately licensed verification data is accepted.
+- Pull requests and main-branch pushes now run the full Node test and syntax-check suite in GitHub Actions.
+
 ## 1.2.1 - 2026-07-18
 
 ### Fixed

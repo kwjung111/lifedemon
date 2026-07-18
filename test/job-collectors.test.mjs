@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inferCompany, inferJobMetadata, linksForSource, mapWithConcurrency, publicJobSources } from "../src/apps/jobs/collectors.mjs";
+import { inferCompany, inferJobMetadata, linksForSource, mapWithConcurrency, normalizePublicJob, publicJobSources } from "../src/apps/jobs/collectors.mjs";
 
 test("limits detail work while preserving each result position", async () => {
   let active = 0;
@@ -23,6 +23,25 @@ test("keeps only public detail URLs for each source", () => {
     { href: "https://www.wanted.co.kr/login", text: "로그인" },
   ]);
   assert.deepEqual(links, [{ href: "https://www.wanted.co.kr/wd/123", text: "DevOps" }]);
+});
+
+test("uses query-specific public search pages without login state", () => {
+  const wanted = publicJobSources.find((source) => source.name === "wanted");
+  const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
+  assert.equal(wanted.requiresSession, undefined);
+  assert.equal(wanted.listUrl("DevOps"), "https://www.wanted.co.kr/search?query=DevOps&tab=position");
+  assert.equal(jobkorea.listUrl("SRE 엔지니어"), "https://www.jobkorea.co.kr/Search/?stext=SRE%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4");
+});
+
+test("canonicalizes JobKorea detail URLs and keeps the posting id", () => {
+  const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
+  const job = normalizePublicJob(jobkorea, {
+    title: "DevOps 엔지니어", company: "좋은회사",
+    url: "https://www.jobkorea.co.kr/Recruit/GI_Read/49220858?Oem_Code=C1&stext=DevOps",
+    rawText: "공고 본문",
+  });
+  assert.equal(job.url, "https://www.jobkorea.co.kr/Recruit/GI_Read/49220858");
+  assert.equal(job.externalId, "49220858");
 });
 
 test("keeps only matching listing cards when a discovery query is supplied", () => {
