@@ -14,7 +14,7 @@ export const publicJobSources = [
   {
     name: "wanted",
     listUrl: (query) => `https://www.wanted.co.kr/search?query=${encodeURIComponent(query)}&tab=position`,
-    detailPath: /\/wd\/\d+/,
+    detailPath: /\/wd\/\d+/, requiresSession: true,
   },
   {
     name: "jobkorea",
@@ -64,6 +64,13 @@ export function inferCompany(sourceName, pageTitle, rawText = "") {
   return clean(rawText.split(/\n+/)[0]);
 }
 
+export function inferJobTitle(sourceName, pageTitle, heading = "") {
+  if (clean(heading)) return clean(heading);
+  const title = clean(pageTitle).replace(/\s*[|｜]\s*(원티드|잡코리아|리멤버).*$/i, "");
+  if (sourceName === "jobkorea") return clean(title.replace(/^.+?\s+채용\s*-\s*/, ""));
+  return title;
+}
+
 export function inferJobMetadata(bodyText) {
   const lines = String(bodyText || "").split(/\r?\n/).map(clean).filter(Boolean);
   return {
@@ -87,7 +94,8 @@ async function extractDetail(page, href, source) {
   const pageTitle = clean(await page.locator('meta[property="og:title"]').getAttribute("content").catch(() => "")) || clean(await page.title());
   // Do not guess from arbitrary body text: an unknown company is safer than an incorrect pass.
   const company = inferCompany(source.name, pageTitle, rawText);
-  const title = clean(await page.locator("h1").first().textContent().catch(() => "")) || clean(await page.title());
+  const heading = await page.locator("h1").first().textContent().catch(() => "");
+  const title = inferJobTitle(source.name, pageTitle, heading);
   const metadata = inferJobMetadata(bodyText);
   return normalizePublicJob(source, { url: page.url(), company, title, rawText,
     ...metadata,
@@ -109,10 +117,14 @@ export async function mapWithConcurrency(items, concurrency, worker) {
 }
 
 export async function collectPublicJobSource(source, { query = "", maxDetails = 50, detailConcurrency = 4 } = {}) {
+  if (source.requiresSession && !process.env.WANTED_STORAGE_STATE_FILE) {
+    throw new Error("wanted requires WANTED_STORAGE_STATE_FILE from an authorized logged-in session");
+  }
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext({
       locale: "ko-KR", timezoneId: "Asia/Seoul", serviceWorkers: "block",
+      ...(source.requiresSession ? { storageState: process.env.WANTED_STORAGE_STATE_FILE } : {}),
     });
     const page = await context.newPage();
     const response = await page.goto(source.listUrl(query), { waitUntil: "domcontentloaded", timeout: 60_000 });
