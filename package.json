@@ -1,6 +1,6 @@
 {
   "name": "monitor-platform",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "calendar:sync": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/admin/sync-google-calendar.mjs",
     "jobs:collect": "node src/admin/job-collect.mjs",
     "jobs:filter": "node src/admin/job-filter.mjs",
+    "jobs:verify-companies": "node src/admin/job-verify-companies.mjs",
     "jobs:daily": "node src/jobs-daily.mjs",
     "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/jobs-daily.mjs && node --check src/reminder-worker.mjs && node --check src/apps/reminders/worker-pass.mjs && node --check src/integrations/google-calendar.mjs && node --check src/apps/reminders/ai-parser.mjs && node --check src/admin/google-calendar-env.mjs && node --check src/admin/authorize-google-calendar.mjs && node --check src/admin/install-google-calendar-env.mjs"
   },

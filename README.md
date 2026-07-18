@@ -54,7 +54,7 @@ JobKorea discovery uses its public search and public detail pages without login 
 
 The production `jobs-daily.timer` runs one weekday digest at 09:20 KST. Install it with the other systemd units only after the private profile, company-verification import, and (optionally) Wanted session have been placed outside Git.
 
-JobPlanet must not be crawled: its published policy prohibits automated collection and AI use of its content. The daily job never logs in to or opens JobPlanet. The strict gate therefore requires an authorized, manually supplied, or separately licensed entry in the format shown in `job-company-verifications.example.json`. Missing verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
+JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOBPLANET_PASSWORD`) and an ignored Playwright storage-state file (`JOBPLANET_STORAGE_STATE_FILE`). The daily pipeline refreshes active-company ratings and employee counts before filtering. Never commit credentials, cookies, or storage-state files. Missing verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
 
 운영 환경에서는 `systemd/`의 서비스와 타이머 예시를 환경에 맞게 수정해서 사용합니다.
 

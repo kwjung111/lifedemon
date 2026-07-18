@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 - 2026-07-19
+
+### Changed
+
+- Restored signed-in JobPlanet company verification in the daily job pipeline using the configured account and private Playwright storage state.
+
 ## 1.2.2 - 2026-07-18
 
 ### Fixed

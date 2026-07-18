@@ -4,8 +4,7 @@ import { createHash } from "node:crypto";
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 export const normalizeCompanyName = (value) => clean(value).toLowerCase().replace(/\([^)]*\)|㈜|\(주\)|주식회사/g, "").replace(/\s+/g, "");
 
-// This adapter deliberately accepts only user-supplied or licensed data. JobPlanet's
-// published policy forbids automated collection, so it is never a crawler target.
+// Load the private verification cache refreshed by the signed-in JobPlanet collector.
 export function loadAuthorizedCompanyVerifications(path = process.env.JOB_COMPANY_VERIFICATION_FILE) {
   if (!path) return new Map();
   const rows = JSON.parse(readFileSync(path, "utf8"));
