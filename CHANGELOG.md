@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 - 2026-07-18
+
+### Fixed
+
+- Production services now consistently disable Node's network-family autoselection, preserving the deployed connectivity workaround across Git pulls and systemd reinstalls.
+
 ## 1.2.0 - 2026-07-16
 
 ### Added
