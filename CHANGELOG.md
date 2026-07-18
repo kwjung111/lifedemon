@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 - 2026-07-16
+
+### Added
+
+- Optional bidirectional synchronization between approved reminders and a dedicated Google Calendar.
+- A one-time OAuth and installation flow that creates the private calendar and safely updates the mode-600 service environment without removing existing secrets.
+- Natural-language Korean reminder parsing with explicit clarification for missing dates or times.
+- Telegram `/calendar` status reporting and a one-off `calendar:sync` command.
+
+### Fixed
+
+- Malformed reminder-model JSON now fails only the current Telegram request instead of crashing the bot process.
+- Calendar outages no longer delay due Telegram reminders, and concurrent reminder edits remain pending until Google has the same state.
+- Natural-language parsing uses a bounded, tool-free Structured Outputs request instead of a filesystem-capable agent process.
+- Calendar authorization now uses the least-privilege app-created-calendar scope and can be installed without exposing unrelated service secrets.
+
 ## 1.1.3 - 2026-07-16
 
 ### Fixed

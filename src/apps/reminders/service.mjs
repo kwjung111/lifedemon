@@ -19,7 +19,7 @@ export async function proposeReminder(input) {
   const reminder = createReminder(input);
   if (reminder.status === "approved" || reminder.status === "fired") return reminder;
   await sendMessage(
-    `🔔 알림을 등록할까요?\n\n${reminder.title}\n시각: ${formatReminderTime(reminder.due_at)}${
+    `🔔 이 알림을 등록할까요?\n\n[일시] ${formatReminderTime(reminder.due_at)}\n[내용] ${reminder.title}${
       reminder.resolver ? "\n링크: 알림 시점에 공식 사이트에서 자동 탐색"
         : reminder.url ? `\n링크: ${reminder.url}` : ""
     }`,

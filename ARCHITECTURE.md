@@ -6,11 +6,11 @@ Life Daemon is a personal automation platform, not a single-purpose housing bot.
 
 - `src/core/`: Telegram polling, authorization, routing, retries, and other shared runtime concerns.
 - `src/apps/housing/`: Housing-specific commands and interactions.
-- `src/apps/jobs/`: Future job-notice collectors, filters, reports, and interaction state.
+- `src/apps/jobs/`: Job-notice collectors, company verification, profile filtering, reports, and interaction state.
 - `src/apps/reminders/`: Global event proposals, approval, listing, and delivery shared by every app.
 - `src/telegram.mjs`: Shared Telegram client. It has no housing or jobs business rules.
 - `src/bot.mjs`: Composition root. It registers enabled app modules with the shared runtime.
-- `data/platform.sqlite`: Shared gateway checkpoints only; app data stays in app-owned databases.
+- `data/platform.sqlite`: Shared gateway settings, reminder state, Calendar mappings, and synchronization leases; domain-specific housing and job data stay in app-owned databases.
 
 Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
 
@@ -45,6 +45,10 @@ Daily collectors remain separate systemd one-shot services and timers. The alway
 
 Approved reminders are stored in `platform.sqlite` and delivered by the independent `monitor-reminder.service`. App modules propose reminders; they do not schedule or send due events themselves.
 Reminder links are optional. Domain events may attach a resolver and structured metadata; the worker resolves an official result link at delivery time. Generic events can have no link at all.
+
+Google Calendar integration is optional and remains inside the reminder worker. A dedicated calendar is synchronized in both directions through the Google Calendar REST API: approved/cancelled global reminders are pushed to Google, and Google event creates/updates/deletes are applied to `platform.sqlite`. OAuth credentials are supplied only through the private environment file. When they are absent or the feature flag is off, reminder behavior is unchanged.
+
+Natural-language Telegram reminder requests are routed to a tool-free OpenAI Structured Outputs call only when reminder intent is detected. The JSON Schema output must ask for clarification when an exact date or time is missing. The model has no shell or filesystem access, the existing approval callback remains the write boundary, and the strict `/remind` syntax bypasses AI entirely.
 
 ## Codex authentication fallback
 
