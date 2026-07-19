@@ -25,11 +25,10 @@ test("keeps only public detail URLs for each source", () => {
   assert.deepEqual(links, [{ href: "https://www.wanted.co.kr/wd/123", text: "DevOps" }]);
 });
 
-test("uses query-specific search pages and keeps Wanted session-gated", () => {
+test("uses query-specific public pages and routes Wanted through Codex web search", () => {
   const wanted = publicJobSources.find((source) => source.name === "wanted");
   const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
-  assert.equal(wanted.requiresSession, true);
-  assert.equal(wanted.listUrl("DevOps"), "https://www.wanted.co.kr/search?query=DevOps&tab=position");
+  assert.equal(wanted.collector, "codex-web-search");
   assert.equal(jobkorea.listUrl("SRE 엔지니어"), "https://www.jobkorea.co.kr/Search/?stext=SRE%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4");
 });
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.4 - 2026-07-19
+
+### Added
+
+- Added an interactive Wanted authorization command and automatic storage-state refresh after successful collection.
+- Expired Wanted sessions now produce an explicit reauthorization error for the Telegram digest.
+
 ## 1.2.3 - 2026-07-19
 
 ### Changed
