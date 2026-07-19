@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test",
+    "test": "node scripts/run-tests.mjs",
     "smoke": "node playwright-smoke.cjs",
     "notify": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env scripts/telegram-notify.mjs",
     "telegram:discover": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env scripts/telegram-discover.mjs",
