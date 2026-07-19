@@ -1,5 +1,5 @@
 import { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } from "./company-verification.mjs";
-import { jobAssessmentSummary } from "./db.mjs";
+import { jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
 
@@ -9,7 +9,7 @@ function assessmentFor(row) { try { return JSON.parse(row.result_json); } catch 
 const escapeHtml = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const link = (url) => `<a href="${escapeHtml(url)}">링크</a>`;
 
-export function formatJobReportPages(collection = [], { limit = 100 } = {}) {
+function buildJobReportPages(collection = [], { limit = 100 } = {}) {
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const summary = jobAssessmentSummary(jobProfileFingerprint(profile), companyVerificationFingerprint(verifications), limit);
@@ -29,18 +29,34 @@ export function formatJobReportPages(collection = [], { limit = 100 } = {}) {
       escapeHtml(`${row.company} — ${row.title}`.slice(0, 220)), result.summary ? escapeHtml(String(result.summary).slice(0, 260)) : null, link(row.url)].filter(Boolean).join("\n");
   });
   if (summary.failures.length) header.push("", `필터 오류 ${summary.failures.length}건: ${summary.failures[0].slice(0, 140)}`);
-  const pages = [header.join("\n")];
-  for (const entry of entries) {
+  const pages = [{ text: header.join("\n"), items: [] }];
+  for (const [offset, entry] of entries.entries()) {
     const last = pages.length - 1;
-    if (`${pages[last]}\n${entry}`.length > telegramLimit) pages.push(entry);
-    else pages[last] = `${pages[last]}\n${entry}`;
+    const item = { index: offset + 1, id: summary.selected[offset].id };
+    if (`${pages[last].text}\n${entry}`.length > telegramLimit) pages.push({ text: entry, items: [item] });
+    else {
+      pages[last].text = `${pages[last].text}\n${entry}`;
+      pages[last].items.push(item);
+    }
   }
   return pages;
 }
 
+export function formatJobReportPages(collection = [], options = {}) { return buildJobReportPages(collection, options).map((page) => page.text); }
 export function formatJobReport(collection = [], options = {}) { return formatJobReportPages(collection, options)[0]; }
 export async function sendJobReport(collection = [], options = {}) {
   const sent = [];
-  for (const page of formatJobReportPages(collection, options)) sent.push(await sendMessage(page, { parse_mode: "HTML" }));
+  for (const page of buildJobReportPages(collection, options)) {
+    const message = await sendMessage(page.text, {
+      parse_mode: "HTML",
+      ...(page.items.length ? {
+        reply_markup: {
+          inline_keyboard: page.items.map((item) => [{ text: `${item.index}번 지원했어`, callback_data: `j:ap:${item.id}` }]),
+        },
+      } : {}),
+    });
+    if (message?.message_id) saveJobDigestItems(message.message_id, page.items);
+    sent.push(message);
+  }
   return sent;
 }

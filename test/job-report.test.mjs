@@ -15,8 +15,10 @@ process.env.TELEGRAM_CHAT_ID = "1";
 writeFileSync(profileFile, JSON.stringify({ preferences: { preferredRoles: ["devops"], excludedRoles: ["backend"] }, companyFilters: { jobplanet: { minimumRating: 2.5, excludeWhenMissing: true }, minimumEmployeeCount: 11 } }));
 writeFileSync(companyFile, JSON.stringify([]));
 
-const { jobDb } = await import("../src/apps/jobs/db.mjs");
+const { jobDb, saveJobAssessment, setJobApplication, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
 const { formatJobReport } = await import("../src/apps/jobs/report.mjs");
+const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
+const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
 
 test.after(() => { jobDb.close(); rmSync(dataDir, { recursive: true, force: true }); });
 
@@ -26,4 +28,21 @@ test("reports strict verification status without exposing private profile", () =
   assert.match(report, /원티드 오류/);
   assert.match(report, /회사 검증 데이터가 아직 없어/);
   assert.doesNotMatch(report, /backend|devops/i);
+});
+
+test("excludes jobs recorded as applied from later reports", () => {
+  const id = upsertJobPosting({
+    source: "wanted", company: "테스트회사", title: "DevOps Engineer",
+    url: "https://www.wanted.co.kr/wd/123", rawText: "AWS Kubernetes CI/CD",
+  });
+  const job = jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id);
+  saveJobAssessment(
+    job,
+    { decision: "pass", summary: "적합", reasons: [], concerns: [], evidence: [] },
+    jobProfileFingerprint(loadJobProfile()),
+    companyVerificationFingerprint(loadAuthorizedCompanyVerifications()),
+  );
+  assert.match(formatJobReport(), /테스트회사/);
+  setJobApplication(id, "applied");
+  assert.doesNotMatch(formatJobReport(), /테스트회사/);
 });

@@ -24,6 +24,16 @@ jobDb.exec(`
     content_hash TEXT NOT NULL, profile_fingerprint TEXT NOT NULL, decision TEXT NOT NULL,
     result_json TEXT NOT NULL, model TEXT, assessed_at TEXT NOT NULL, verification_fingerprint TEXT
   );
+  CREATE TABLE IF NOT EXISTS job_applications (
+    posting_id TEXT PRIMARY KEY REFERENCES job_postings(id) ON DELETE CASCADE,
+    status TEXT NOT NULL, applied_at TEXT, note TEXT, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS job_digest_items (
+    message_id INTEGER NOT NULL, item_index INTEGER NOT NULL,
+    posting_id TEXT NOT NULL REFERENCES job_postings(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (message_id, item_index)
+  );
   CREATE TABLE IF NOT EXISTS job_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `);
 const assessmentColumns = new Set(jobDb.prepare("PRAGMA table_info(job_assessments)").all().map((column) => column.name));
@@ -118,6 +128,10 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
     SELECT a.decision, COUNT(*) AS count
       FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
      WHERE p.active=1 AND a.profile_fingerprint=? AND a.verification_fingerprint=?
+       AND NOT EXISTS (
+         SELECT 1 FROM job_applications ja
+          WHERE ja.posting_id=p.id AND ja.status='applied'
+       )
      GROUP BY a.decision
   `).all(profileFingerprint, verificationFingerprint);
   const selected = jobDb.prepare(`
@@ -125,6 +139,10 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
       FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
      WHERE p.active=1 AND a.profile_fingerprint=? AND a.verification_fingerprint=?
        AND a.decision IN ('pass', 'uncertain')
+       AND NOT EXISTS (
+         SELECT 1 FROM job_applications ja
+          WHERE ja.posting_id=p.id AND ja.status='applied'
+       )
      ORDER BY CASE a.decision WHEN 'pass' THEN 0 ELSE 1 END, a.assessed_at DESC
      LIMIT ?
   `).all(profileFingerprint, verificationFingerprint, limit);
@@ -133,6 +151,41 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
      WHERE p.active=1 AND q.state='error' ORDER BY q.updated_at DESC LIMIT 3
   `).all().map((row) => row.last_error);
   return { counts: Object.fromEntries(counts.map((row) => [row.decision, Number(row.count)])), selected, failures };
+}
+
+export function getJobPosting(id) {
+  return jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id) || null;
+}
+
+export function setJobApplication(postingId, status = "applied", fields = {}) {
+  const timestamp = now();
+  jobDb.prepare(`
+    INSERT INTO job_applications(posting_id, status, applied_at, note, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(posting_id) DO UPDATE SET
+      status=excluded.status,
+      applied_at=COALESCE(excluded.applied_at, job_applications.applied_at),
+      note=COALESCE(excluded.note, job_applications.note),
+      updated_at=excluded.updated_at
+  `).run(postingId, status, fields.appliedAt || (status === "applied" ? timestamp : null), fields.note || null, timestamp);
+  return getJobPosting(postingId);
+}
+
+export function saveJobDigestItems(messageId, items) {
+  const insert = jobDb.prepare(`
+    INSERT INTO job_digest_items(message_id, item_index, posting_id, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(message_id, item_index) DO UPDATE SET posting_id=excluded.posting_id, created_at=excluded.created_at
+  `);
+  const timestamp = now();
+  for (const item of items) insert.run(messageId, item.index, item.id, timestamp);
+}
+
+export function jobForDigestItem(messageId, itemIndex) {
+  return jobDb.prepare(`
+    SELECT p.* FROM job_digest_items d JOIN job_postings p ON p.id=d.posting_id
+     WHERE d.message_id=? AND d.item_index=?
+  `).get(messageId, itemIndex) || null;
 }
 
 export function activeJobCompanies(limit = 100) {
