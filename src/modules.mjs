@@ -6,7 +6,7 @@ export const botModules = [reminderBotModule, housingBotModule, jobsBotModule];
 
 export function telegramMenuCommands() {
   const commands = [
-    { command: "help", description: "모든 기능과 사용법 보기" },
+    { command: "help", description: "📖 전체 기능과 사용법" },
     ...botModules.flatMap((module) => module.commands || []),
   ];
   const seen = new Set();

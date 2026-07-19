@@ -38,11 +38,11 @@ function clearClarification() {
 
 export const reminderBotModule = {
   id: "reminders",
-  help: "🔔 전역 알림\n/reminders : 예정 알림 목록\n/remind 내일 오후 4시에 서류 발표 알려줘\n정확한 형식도 가능: /remind 2026-07-20 16:00 서류 발표\n/calendar : Google Calendar 연동 상태",
+  help: "🔔 전역 알림\n/remind 내일 오후 4시에 서류 발표 알려줘\n/reminders : 예정 알림 목록\n/calendar_status : Google Calendar 연동 상태\n정확한 형식도 가능: /remind 2026-07-20 16:00 서류 발표",
   commands: [
-    { command: "reminders", description: "예정된 전역 알림 보기" },
-    { command: "remind", description: "자연어로 새 전역 알림 등록" },
-    { command: "calendar", description: "Google Calendar 연동 상태" },
+    { command: "remind", description: "🔔 자연어로 새 알림 등록" },
+    { command: "reminders", description: "🔔 예정된 알림 목록" },
+    { command: "calendar_status", description: "🔔 Google Calendar 연동 상태" },
   ],
 
   canHandleCallback(query) {
@@ -74,7 +74,7 @@ export const reminderBotModule = {
 
   async handleMessage(message) {
     const text = String(message.text || "").trim();
-    if (/^\/calendar(?:@\w+)?$/i.test(text)) {
+    if (/^\/(?:calendar_status|calendar)(?:@\w+)?$/i.test(text)) {
       const status = calendarSyncStatus();
       await sendMessage([
         "📅 Google Calendar 연동",

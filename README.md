@@ -135,7 +135,8 @@ node src/admin/install-google-calendar-env.mjs \
 
 Both helpers force their output to mode `0600`. Remove the temporary upload,
 restart `monitor-telegram-bot.service` and `monitor-reminder.service`, then use
-`/calendar` in Telegram to check the last synchronization state. A one-off
+`/calendar_status` in Telegram to check the last synchronization state. The old
+`/calendar` alias remains supported. A one-off
 synchronization can be run with `npm run calendar:sync` on the server.
 
 The installer refuses to replace an existing calendar ID. If the dedicated

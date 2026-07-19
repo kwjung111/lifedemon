@@ -28,12 +28,11 @@ function callbackParts(data) {
 
 export const housingBotModule = {
   id: "housing",
-  help: "🏠 주거 공고\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n/housing_status : 지원 진행 현황\n/instructions : 기본 지침\n/rules : 추가 지침\n예: ‘민간임대는 앞으로 제외해’",
+  help: "🏠 주거 공고\n/housing_status : 지원 진행 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n지침 예: ‘민간임대는 앞으로 제외해’",
   commands: [
-    { command: "status", description: "지원 진행 중인 주택 공고 보기" },
-    { command: "housing_status", description: "주택 지원 진행 현황 보기" },
-    { command: "instructions", description: "주택 공고 기본 지침 보기" },
-    { command: "rules", description: "주택 공고 추가 지침 보기" },
+    { command: "housing_status", description: "🏠 지원 중인 주택 공고" },
+    { command: "housing_guide", description: "🏠 공고 분석 기본 지침" },
+    { command: "housing_rules", description: "🏠 추가·제외 지침 목록" },
   ],
 
   canHandleCallback(query) {
@@ -61,11 +60,11 @@ export const housingBotModule = {
 
   async handleMessage(message) {
     const text = String(message.text || "").trim();
-    if (/^\/instructions(?:@\w+)?$/i.test(text) || /^기본\s*지침\s*(?:보여줘)?$/i.test(text)) {
+    if (/^\/(?:housing_guide|housing_instructions|instructions)(?:@\w+)?$/i.test(text) || /^기본\s*지침\s*(?:보여줘)?$/i.test(text)) {
       await sendMessage(`🏠 주거 봇 기본 지침\n\n${HOUSING_BASE_INSTRUCTION}`);
       return true;
     }
-    if (/^\/rules(?:@\w+)?$/i.test(text) || /^(?:추가\s*)?지침\s*(?:목록|보여줘)$/i.test(text)) {
+    if (/^\/(?:housing_rules|rules)(?:@\w+)?$/i.test(text) || /^(?:추가\s*)?지침\s*(?:목록|보여줘)$/i.test(text)) {
       const rules = listHousingRules();
       await sendMessage(rules.length
         ? `🏠 적용 중인 추가 지침\n\n${rules.map((rule) => `${rule.id}. ${rule.instruction}`).join("\n")}`
@@ -80,7 +79,7 @@ export const housingBotModule = {
     }
     if (rule?.action === "add") {
       const saved = addHousingRule(rule);
-      await sendMessage(`⚙️ 지침을 저장했습니다. 다음 수집부터 적용합니다.\n${saved.id}. ${saved.instruction}\n\n/rules : 전체 지침 확인`);
+      await sendMessage(`⚙️ 지침을 저장했습니다. 다음 수집부터 적용합니다.\n${saved.id}. ${saved.instruction}\n\n/housing_rules : 전체 지침 확인`);
       return true;
     }
     if (/^\/(?:housing_)?status(?:@\w+)?$/i.test(text) || /^(?:진행중|지원현황|뭐 넣었어)\s*$/i.test(text)) {

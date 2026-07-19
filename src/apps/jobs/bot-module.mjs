@@ -9,8 +9,8 @@ export const jobsBotModule = {
   id: "jobs",
   help: "💼 채용 공고\n/jobs : 현재 채용 공고와 AI 판정 보기\n/job_status : 지원 진행 중인 채용공고 보기\n‘지원했어’는 지원 추적, ‘관심없어’는 추천에서만 제외",
   commands: [
-    { command: "jobs", description: "채용 공고 현황과 AI 판정 보기" },
-    { command: "job_status", description: "지원 진행 중인 채용공고 보기" },
+    { command: "jobs", description: "💼 최신 채용 공고와 AI 판정" },
+    { command: "job_status", description: "💼 지원 중인 채용 공고" },
   ],
 
   canHandleCallback(query) {
