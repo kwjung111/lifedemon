@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { detectWantedSession, saveWantedSession } from "./wanted-session.mjs";
 
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
@@ -130,6 +131,9 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
     const response = await page.goto(source.listUrl(query), { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (!response || response.status() >= 400) throw new Error(`${source.name} listing HTTP ${response?.status()}`);
     await page.waitForTimeout(1_000);
+    if (source.name === "wanted" && await detectWantedSession(page) === "signed_out") {
+      throw new Error("wanted session expired; run npm run wanted:authorize");
+    }
     await page.waitForFunction(
       (pattern) => [...document.querySelectorAll("a")].some((anchor) => new RegExp(pattern, "i").test(anchor.href)),
       source.detailPath.source,
@@ -145,6 +149,7 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
       return null;
     });
     const jobs = details.filter(Boolean);
+    if (source.name === "wanted") await saveWantedSession(context, process.env.WANTED_STORAGE_STATE_FILE);
     await context.close();
     if (!jobs.length) throw new Error(`${source.name} returned no readable public details`);
     return jobs;

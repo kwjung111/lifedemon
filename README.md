@@ -52,6 +52,8 @@ The job pipeline has two separate stages. `jobs:collect` accesses only public li
 
 JobKorea discovery uses its public search and public detail pages without login credentials. Wanted rejects automated server access without an authorized user session, so set `WANTED_STORAGE_STATE_FILE` to an ignored Playwright storage-state file exported from an account allowed to use the service. A missing session or source failure is reported in the digest and does not deactivate previously known postings. Never commit an ID, password, cookie, or storage-state file.
 
+Create the initial Wanted session with `npm run wanted:authorize`. Complete login in the opened browser; the command writes `data/wanted-storage-state.json` by default. The collector saves refreshed cookies back to the same private file after each successful Wanted run. Manual login is needed again only when Wanted revokes the session or requires additional verification.
+
 The production `jobs-daily.timer` runs one weekday digest at 09:20 KST. Install it with the other systemd units only after the private profile, company-verification import, and (optionally) Wanted session have been placed outside Git.
 
 JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOBPLANET_PASSWORD`) and an ignored Playwright storage-state file (`JOBPLANET_STORAGE_STATE_FILE`). The daily pipeline refreshes active-company ratings and employee counts before filtering. Never commit credentials, cookies, or storage-state files. Missing verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
