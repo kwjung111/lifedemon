@@ -1,5 +1,17 @@
-const responsesApiUrl = "https://api.openai.com/v1/responses";
-const defaultModel = "gpt-5-mini";
+import { apiFallbackKey, runCodexStructuredOnce, shouldFallbackToApi } from "../../core/codex-structured.mjs";
+
+export const reminderRequestSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    intent: { type: "string", enum: ["reminder", "needs_clarification", "not_reminder"] },
+    title: { type: ["string", "null"] },
+    due_at: { type: ["string", "null"] },
+    url: { type: ["string", "null"] },
+    clarification: { type: ["string", "null"] },
+  },
+  required: ["intent", "title", "due_at", "url", "clarification"],
+};
 
 function nowKstText(now = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", {
@@ -11,51 +23,23 @@ function nowKstText(now = new Date()) {
 
 export async function runReminderModel(prompt, {
   env = process.env,
-  fetchImpl = globalThis.fetch,
+  codexRunner = runCodexStructuredOnce,
 } = {}) {
-  const apiKey = String(env.OPENAI_API_KEY || "").trim();
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured for reminder parsing");
-  const response = await fetchImpl(responsesApiUrl, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: String(env.REMINDER_AI_MODEL || defaultModel),
-      input: prompt,
-      tools: [],
-      store: false,
-      max_output_tokens: 300,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "reminder_request",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              intent: { type: "string", enum: ["reminder", "needs_clarification", "not_reminder"] },
-              title: { type: ["string", "null"] },
-              due_at: { type: ["string", "null"] },
-              url: { type: ["string", "null"] },
-              clarification: { type: ["string", "null"] },
-            },
-            required: ["intent", "title", "due_at", "url", "clarification"],
-          },
-        },
-      },
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`Reminder AI HTTP ${response.status}`);
-  const output = payload?.output
-    ?.flatMap((item) => item?.content || [])
-    .find((item) => item?.type === "output_text")?.text;
-  if (!output) throw new Error("Reminder AI returned no structured output");
-  return JSON.parse(output);
+  const options = {
+    prompt,
+    schema: reminderRequestSchema,
+    env,
+    timeoutMs: 60_000,
+    search: false,
+    taskName: "reminder parse",
+  };
+  try {
+    return await codexRunner({ ...options, apiKey: null });
+  } catch (error) {
+    const fallbackKey = apiFallbackKey(env);
+    if (!fallbackKey || !shouldFallbackToApi(error)) throw error;
+    return codexRunner({ ...options, apiKey: fallbackKey });
+  }
 }
 
 export function looksLikeReminderRequest(text) {

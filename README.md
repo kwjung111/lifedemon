@@ -84,14 +84,16 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 ## Natural-language reminders
 
 The Telegram gateway accepts natural Korean reminder requests such as
-`내일 오후 3시에 병원 예약 알려줘`. A tool-free OpenAI Structured Outputs
+`/remind 내일 오후 3시에 병원 예약 알려줘`. A sandboxed, tool-free Codex
 request converts relative dates in the
 `Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
 times cause a clarification question instead of a guessed schedule. The parsed
 time and title are shown with the existing approval buttons before registration.
 The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
-AI-free fallback. The bot service reads `OPENAI_API_KEY` from the separately
-protected `openai-api.env`; the model receives no shell or filesystem tools.
+AI-free fallback. Natural-language parsing uses the server's ChatGPT-linked Codex
+login first and only uses `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) when a
+valid fallback key is configured and the login reports a quota or authentication
+failure. The parser has no web search and runs in a temporary read-only sandbox.
 
 ## Google Calendar sync
 

@@ -7,45 +7,58 @@ import {
   runReminderModel,
 } from "../src/apps/reminders/ai-parser.mjs";
 
-test("uses a tool-free structured request without exposing unrelated secrets", async () => {
+test("uses the ChatGPT-linked Codex login first without exposing unrelated secrets", async () => {
   let request;
   const result = await runReminderModel("parse this reminder", {
     env: {
       OPENAI_API_KEY: "openai-secret",
-      REMINDER_AI_MODEL: "test-model",
       TELEGRAM_BOT_TOKEN: "telegram-secret",
       GOOGLE_OAUTH_REFRESH_TOKEN: "google-secret",
       MYHOME_API_SERVICE_KEY: "myhome-secret",
     },
-    fetchImpl: async (url, options) => {
-      request = { url, options };
-      return new Response(JSON.stringify({
-        output: [{
-          type: "message",
-          content: [{
-            type: "output_text",
-            text: JSON.stringify({
-              intent: "needs_clarification",
-              title: null,
-              due_at: null,
-              url: null,
-              clarification: "몇 시인가요?",
-            }),
-          }],
-        }],
-      }), { status: 200 });
+    codexRunner: async (options) => {
+      request = options;
+      return {
+        intent: "needs_clarification",
+        title: null,
+        due_at: null,
+        url: null,
+        clarification: "몇 시인가요?",
+      };
     },
   });
 
-  const body = JSON.parse(request.options.body);
-  assert.equal(request.url, "https://api.openai.com/v1/responses");
-  assert.equal(request.options.headers.authorization, "Bearer openai-secret");
-  assert.deepEqual(body.tools, []);
-  assert.equal(body.store, false);
-  assert.equal(body.text.format.type, "json_schema");
-  assert.equal(body.text.format.strict, true);
-  assert.doesNotMatch(request.options.body, /telegram-secret|google-secret|myhome-secret|openai-secret/);
+  assert.equal(request.apiKey, null);
+  assert.equal(request.search, false);
+  assert.equal(request.schema.type, "object");
+  assert.doesNotMatch(request.prompt, /telegram-secret|google-secret|myhome-secret|openai-secret/);
   assert.equal(result.clarification, "몇 시인가요?");
+});
+
+test("does not treat placeholder API keys as a fallback", async () => {
+  let attempts = 0;
+  await assert.rejects(() => runReminderModel("parse", {
+    env: { OPENAI_API_KEY: "missing", CODEX_API_FALLBACK_KEY: "missing" },
+    codexRunner: async () => {
+      attempts += 1;
+      throw new Error("authentication required");
+    },
+  }));
+  assert.equal(attempts, 1);
+});
+
+test("retries reminder parsing with a valid API fallback key", async () => {
+  const attempts = [];
+  const result = await runReminderModel("parse", {
+    env: { CODEX_API_FALLBACK_KEY: "valid-secret" },
+    codexRunner: async ({ apiKey }) => {
+      attempts.push(apiKey);
+      if (!apiKey) throw new Error("usage limit reached");
+      return { intent: "not_reminder", title: null, due_at: null, url: null, clarification: null };
+    },
+  });
+  assert.deepEqual(attempts, [null, "valid-secret"]);
+  assert.equal(result.intent, "not_reminder");
 });
 
 test("only routes likely reminder intent to the AI parser", () => {
