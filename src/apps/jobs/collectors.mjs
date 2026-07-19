@@ -42,7 +42,7 @@ export function normalizePublicJob(source, detail) {
   const company = clean(detail.company);
   if (!title || !company || !detail.url) return null;
   const url = new URL(detail.url);
-  if (source.name === "jobkorea") {
+  if (["remember", "jobkorea"].includes(source.name)) {
     url.search = "";
     url.hash = "";
   }

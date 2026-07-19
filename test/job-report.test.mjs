@@ -51,3 +51,19 @@ test("keeps a job digest in one Telegram message", () => {
   assert.equal(formatJobReportPages([], { limit: 100 }).length, 1);
   assert.ok(formatJobReportPages([], { limit: 100 })[0].length <= 4000);
 });
+
+test("deduplicates the same company and posting across sources", () => {
+  const profileFingerprint = jobProfileFingerprint(loadJobProfile());
+  const verificationFingerprint = companyVerificationFingerprint(loadAuthorizedCompanyVerifications());
+  const ids = [
+    upsertJobPosting({ source: "remember", company: "(주)중복회사", title: "DevOps Engineer", url: "https://career.rememberapp.co.kr/job/posting/777", rawText: "AWS" }),
+    upsertJobPosting({ source: "jobkorea", company: "㈜중복회사", title: "DevOps Engineer", url: "https://www.jobkorea.co.kr/Recruit/GI_Read/888", rawText: "AWS" }),
+  ];
+  for (const id of ids) {
+    const job = jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id);
+    saveJobAssessment(job, { decision: "pass", summary: "적합", reasons: [], concerns: [], evidence: [] }, profileFingerprint, verificationFingerprint);
+  }
+  assert.equal((formatJobReport().match(/중복회사/g) || []).length, 1);
+  setJobApplication(ids[1], "applied");
+  assert.doesNotMatch(formatJobReport(), /중복회사/);
+});

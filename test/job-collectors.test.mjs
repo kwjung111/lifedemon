@@ -43,6 +43,17 @@ test("canonicalizes JobKorea detail URLs and keeps the posting id", () => {
   assert.equal(job.externalId, "49220858");
 });
 
+test("canonicalizes Remember detail URLs across discovery queries", () => {
+  const remember = publicJobSources.find((source) => source.name === "remember");
+  const job = normalizePublicJob(remember, {
+    title: "DevOps 엔지니어", company: "좋은회사",
+    url: "https://career.rememberapp.co.kr/job/posting/324818?postQuerySessionId=abc&isHighlight=true",
+    rawText: "공고 본문",
+  });
+  assert.equal(job.url, "https://career.rememberapp.co.kr/job/posting/324818");
+  assert.equal(job.externalId, "324818");
+});
+
 test("keeps only matching listing cards when a discovery query is supplied", () => {
   const wanted = publicJobSources.find((source) => source.name === "wanted");
   const links = linksForSource(wanted, [

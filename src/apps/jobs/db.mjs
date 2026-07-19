@@ -123,34 +123,47 @@ export function failJobFilter(id, error) {
   return jobDb.prepare("UPDATE job_filter_queue SET state='error', last_error=?, updated_at=? WHERE posting_id=? AND state='reviewing'").run(String(error).slice(0, 1000), now(), id).changes > 0;
 }
 
+const canonicalCompany = (value) => clean(value).toLowerCase()
+  .replace(/주식회사|\(주\)|㈜/g, "")
+  .replace(/[^0-9a-z가-힣]/g, "");
+const canonicalTitle = (value) => clean(value).toLowerCase().replace(/[^0-9a-z가-힣]/g, "");
+export const canonicalJobKey = (job) => `${canonicalCompany(job.company)}|${canonicalTitle(job.title)}`;
+
+const sourcePriority = { wanted: 0, remember: 1, jobkorea: 2 };
+function preferredDuplicate(left, right) {
+  if (left.decision !== right.decision) return left.decision === "pass" ? left : right;
+  return (sourcePriority[left.source] ?? 9) <= (sourcePriority[right.source] ?? 9) ? left : right;
+}
+
 export function jobAssessmentSummary(profileFingerprint, verificationFingerprint, limit = 12) {
-  const counts = jobDb.prepare(`
-    SELECT a.decision, COUNT(*) AS count
+  const rows = jobDb.prepare(`
+    SELECT p.*, a.decision, a.result_json, a.assessed_at, ja.status AS application_status
       FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
+      LEFT JOIN job_applications ja ON ja.posting_id=p.id
      WHERE p.active=1 AND a.profile_fingerprint=? AND a.verification_fingerprint=?
-       AND NOT EXISTS (
-         SELECT 1 FROM job_applications ja
-          WHERE ja.posting_id=p.id AND ja.status='applied'
-       )
-     GROUP BY a.decision
   `).all(profileFingerprint, verificationFingerprint);
-  const selected = jobDb.prepare(`
-    SELECT p.*, a.decision, a.result_json, a.assessed_at
-      FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
-     WHERE p.active=1 AND a.profile_fingerprint=? AND a.verification_fingerprint=?
-       AND a.decision IN ('pass', 'uncertain')
-       AND NOT EXISTS (
-         SELECT 1 FROM job_applications ja
-          WHERE ja.posting_id=p.id AND ja.status='applied'
-       )
-     ORDER BY CASE a.decision WHEN 'pass' THEN 0 ELSE 1 END, a.assessed_at DESC
-     LIMIT ?
-  `).all(profileFingerprint, verificationFingerprint, limit);
+  const groups = new Map();
+  for (const row of rows) {
+    const key = canonicalJobKey(row);
+    const group = groups.get(key) || { applied: false, row: null };
+    group.applied ||= row.application_status === "applied";
+    group.row = group.row ? preferredDuplicate(group.row, row) : row;
+    groups.set(key, group);
+  }
+  const uniqueRows = [...groups.values()].filter((group) => !group.applied).map((group) => group.row);
+  const counts = {};
+  for (const row of uniqueRows) counts[row.decision] = (counts[row.decision] || 0) + 1;
+  const selected = uniqueRows
+    .filter((row) => ["pass", "uncertain"].includes(row.decision))
+    .sort((left, right) => (left.decision === right.decision
+      ? String(right.assessed_at).localeCompare(String(left.assessed_at))
+      : left.decision === "pass" ? -1 : 1))
+    .slice(0, limit);
   const failures = jobDb.prepare(`
     SELECT q.last_error FROM job_filter_queue q JOIN job_postings p ON p.id=q.posting_id
      WHERE p.active=1 AND q.state='error' ORDER BY q.updated_at DESC LIMIT 3
   `).all().map((row) => row.last_error);
-  return { counts: Object.fromEntries(counts.map((row) => [row.decision, Number(row.count)])), selected, failures };
+  return { counts, selected, failures };
 }
 
 export function getJobPosting(id) {
