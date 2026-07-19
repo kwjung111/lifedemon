@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { detectWantedSession, saveWantedSession } from "./wanted-session.mjs";
+import { collectWantedWebSearch } from "./wanted-web-search.mjs";
 
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
@@ -14,8 +14,7 @@ export const publicJobSources = [
   },
   {
     name: "wanted",
-    listUrl: (query) => `https://www.wanted.co.kr/search?query=${encodeURIComponent(query)}&tab=position`,
-    detailPath: /\/wd\/\d+/, requiresSession: true,
+    detailPath: /\/wd\/\d+/, collector: "codex-web-search",
   },
   {
     name: "jobkorea",
@@ -118,22 +117,16 @@ export async function mapWithConcurrency(items, concurrency, worker) {
 }
 
 export async function collectPublicJobSource(source, { query = "", maxDetails = 50, detailConcurrency = 4 } = {}) {
-  if (source.requiresSession && !process.env.WANTED_STORAGE_STATE_FILE) {
-    throw new Error("wanted requires WANTED_STORAGE_STATE_FILE from an authorized logged-in session");
-  }
+  if (source.collector === "codex-web-search") throw new Error("wanted is collected through Codex live web search");
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext({
       locale: "ko-KR", timezoneId: "Asia/Seoul", serviceWorkers: "block",
-      ...(source.requiresSession ? { storageState: process.env.WANTED_STORAGE_STATE_FILE } : {}),
     });
     const page = await context.newPage();
     const response = await page.goto(source.listUrl(query), { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (!response || response.status() >= 400) throw new Error(`${source.name} listing HTTP ${response?.status()}`);
     await page.waitForTimeout(1_000);
-    if (source.name === "wanted" && await detectWantedSession(page) === "signed_out") {
-      throw new Error("wanted session expired; run npm run wanted:authorize");
-    }
     await page.waitForFunction(
       (pattern) => [...document.querySelectorAll("a")].some((anchor) => new RegExp(pattern, "i").test(anchor.href)),
       source.detailPath.source,
@@ -149,16 +142,24 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
       return null;
     });
     const jobs = details.filter(Boolean);
-    if (source.name === "wanted") await saveWantedSession(context, process.env.WANTED_STORAGE_STATE_FILE);
     await context.close();
     if (!jobs.length) throw new Error(`${source.name} returned no readable public details`);
     return jobs;
   } finally { await browser.close(); }
 }
 
-export async function collectAllPublicJobSources({ queries = [""], ...options } = {}) {
+export async function collectAllPublicJobSources({ queries = [""], wantedCollector = collectWantedWebSearch, ...options } = {}) {
   const results = [];
   for (const source of publicJobSources) {
+    if (source.collector === "codex-web-search") {
+      try {
+        const jobs = await wantedCollector({ queries, maxResults: options.maxDetails || 40 });
+        results.push({ source: source.name, jobs, error: jobs.length ? null : "Codex live web search returned no verified Wanted DevOps postings" });
+      } catch (error) {
+        results.push({ source: source.name, jobs: [], error: error.message });
+      }
+      continue;
+    }
     const merged = new Map();
     const errors = [];
     for (const query of queries) {

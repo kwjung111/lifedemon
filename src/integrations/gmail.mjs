@@ -75,3 +75,34 @@ export function messageHeaders(message) {
   const headers = Object.fromEntries(rows.map((row) => [String(row.name || "").toLowerCase(), String(row.value || "")]));
   return { from: headers.from || "", subject: headers.subject || "", date: headers.date || "" };
 }
+
+function decodeBody(data) {
+  if (!data) return "";
+  try { return Buffer.from(String(data).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); }
+  catch { return ""; }
+}
+
+export function messageBodies(message) {
+  const bodies = [];
+  function visit(part) {
+    const body = decodeBody(part?.body?.data);
+    if (body) bodies.push(body);
+    for (const child of part?.parts || []) visit(child);
+  }
+  visit(message?.payload);
+  return bodies;
+}
+
+export function wantedPostingUrls(message) {
+  const urls = new Set();
+  for (const original of messageBodies(message)) {
+    const variants = [original, original.replace(/&amp;/gi, "&")];
+    try { variants.push(decodeURIComponent(original)); } catch { /* not URL encoded */ }
+    for (const body of variants) {
+      for (const match of body.matchAll(/https?:\/\/(?:www\.)?wanted\.co\.kr\/wd\/(\d+)/gi)) {
+        urls.add(`https://www.wanted.co.kr/wd/${match[1]}`);
+      }
+    }
+  }
+  return [...urls];
+}
