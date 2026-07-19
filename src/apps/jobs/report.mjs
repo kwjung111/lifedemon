@@ -1,5 +1,5 @@
 import { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } from "./company-verification.mjs";
-import { jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
+import { appliedJobs, jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
 
@@ -13,11 +13,13 @@ function buildJobReportPages(collection = [], { limit = 100 } = {}) {
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const summary = jobAssessmentSummary(jobProfileFingerprint(profile), companyVerificationFingerprint(verifications), limit);
+  const applications = appliedJobs();
   const collectionLine = collection.length ? collection.map((entry) => `${sourceLabel[entry.source] || entry.source} ${entry.error ? "오류" : entry.count}`).join(" · ") : "수집 결과 없음";
   const header = [
     `💼 채용 공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     `수집: ${collectionLine}`,
     `판정: 적합 ${summary.counts.pass || 0} · 확인 ${summary.counts.uncertain || 0} · 제외 ${summary.counts.exclude || 0}`,
+    `지원 추적: ${applications.length}건`,
   ];
   if (!summary.selected.length) {
     header.push("", "현재 조건을 통과한 공고가 없습니다.");
@@ -50,7 +52,10 @@ export async function sendJobReport(collection = [], options = {}) {
       parse_mode: "HTML",
       ...(page.items.length ? {
         reply_markup: {
-          inline_keyboard: page.items.map((item) => [{ text: `${item.index}번 지원했어`, callback_data: `j:ap:${item.id}` }]),
+          inline_keyboard: page.items.map((item) => [
+            { text: `${item.index}번 지원했어`, callback_data: `j:ap:${item.id}` },
+            { text: `${item.index}번 관심없어`, callback_data: `j:ig:${item.id}` },
+          ]),
         },
       } : {}),
     });
@@ -58,4 +63,19 @@ export async function sendJobReport(collection = [], options = {}) {
     sent.push(message);
   }
   return sent;
+}
+
+export function formatJobApplicationStatus() {
+  const jobs = appliedJobs();
+  if (!jobs.length) return "현재 지원 추적 중인 채용공고가 없습니다.";
+  const lines = jobs.map((job, index) => [
+    `${index + 1}. ${escapeHtml(`${job.company} — ${job.title}`)}`,
+    job.applied_at ? `지원일 ${new Date(job.applied_at).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}` : "지원일 확인 필요",
+    link(job.url),
+  ].join("\n"));
+  return `📌 채용 지원 진행 중 (${jobs.length}건)\n\n${lines.join("\n\n")}`;
+}
+
+export async function sendJobApplicationStatus() {
+  return sendMessage(formatJobApplicationStatus(), { parse_mode: "HTML" });
 }

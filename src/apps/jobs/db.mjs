@@ -145,12 +145,12 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
   const groups = new Map();
   for (const row of rows) {
     const key = canonicalJobKey(row);
-    const group = groups.get(key) || { applied: false, row: null };
-    group.applied ||= row.application_status === "applied";
+    const group = groups.get(key) || { hidden: false, row: null };
+    group.hidden ||= ["applied", "ignored"].includes(row.application_status);
     group.row = group.row ? preferredDuplicate(group.row, row) : row;
     groups.set(key, group);
   }
-  const uniqueRows = [...groups.values()].filter((group) => !group.applied).map((group) => group.row);
+  const uniqueRows = [...groups.values()].filter((group) => !group.hidden).map((group) => group.row);
   const counts = {};
   for (const row of uniqueRows) counts[row.decision] = (counts[row.decision] || 0) + 1;
   const selected = uniqueRows
@@ -182,6 +182,22 @@ export function setJobApplication(postingId, status = "applied", fields = {}) {
       updated_at=excluded.updated_at
   `).run(postingId, status, fields.appliedAt || (status === "applied" ? timestamp : null), fields.note || null, timestamp);
   return getJobPosting(postingId);
+}
+
+export function appliedJobs() {
+  const rows = jobDb.prepare(`
+    SELECT p.*, ja.applied_at, ja.note, ja.updated_at AS application_updated_at
+      FROM job_applications ja JOIN job_postings p ON p.id=ja.posting_id
+     WHERE ja.status='applied'
+     ORDER BY COALESCE(ja.applied_at, ja.updated_at) DESC
+  `).all();
+  const unique = new Map();
+  for (const row of rows) {
+    const key = canonicalJobKey(row);
+    const previous = unique.get(key);
+    unique.set(key, previous ? preferredDuplicate(previous, row) : row);
+  }
+  return [...unique.values()];
 }
 
 export function saveJobDigestItems(messageId, items) {

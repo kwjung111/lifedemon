@@ -15,8 +15,8 @@ process.env.TELEGRAM_CHAT_ID = "1";
 writeFileSync(profileFile, JSON.stringify({ preferences: { preferredRoles: ["devops"], excludedRoles: ["backend"] }, companyFilters: { jobplanet: { minimumRating: 2.5, excludeWhenMissing: true }, minimumEmployeeCount: 11 } }));
 writeFileSync(companyFile, JSON.stringify([]));
 
-const { jobDb, saveJobAssessment, setJobApplication, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
-const { formatJobReport, formatJobReportPages } = await import("../src/apps/jobs/report.mjs");
+const { appliedJobs, jobDb, saveJobAssessment, setJobApplication, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
+const { formatJobApplicationStatus, formatJobReport, formatJobReportPages } = await import("../src/apps/jobs/report.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
 
@@ -66,4 +66,15 @@ test("deduplicates the same company and posting across sources", () => {
   assert.equal((formatJobReport().match(/중복회사/g) || []).length, 1);
   setJobApplication(ids[1], "applied");
   assert.doesNotMatch(formatJobReport(), /중복회사/);
+});
+
+test("tracks applied jobs separately from ignored jobs", () => {
+  const appliedId = upsertJobPosting({ source: "wanted", company: "지원회사", title: "SRE", url: "https://www.wanted.co.kr/wd/901", rawText: "SRE" });
+  const ignoredId = upsertJobPosting({ source: "wanted", company: "관심없는회사", title: "DevOps", url: "https://www.wanted.co.kr/wd/902", rawText: "DevOps" });
+  setJobApplication(appliedId, "applied");
+  setJobApplication(ignoredId, "ignored");
+  assert.equal(appliedJobs().some((job) => job.id === appliedId), true);
+  assert.equal(appliedJobs().some((job) => job.id === ignoredId), false);
+  assert.match(formatJobApplicationStatus(), /지원회사/);
+  assert.doesNotMatch(formatJobApplicationStatus(), /관심없는회사/);
 });
