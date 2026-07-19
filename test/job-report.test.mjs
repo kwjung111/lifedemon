@@ -16,7 +16,7 @@ writeFileSync(profileFile, JSON.stringify({ preferences: { preferredRoles: ["dev
 writeFileSync(companyFile, JSON.stringify([]));
 
 const { jobDb, saveJobAssessment, setJobApplication, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
-const { formatJobReport } = await import("../src/apps/jobs/report.mjs");
+const { formatJobReport, formatJobReportPages } = await import("../src/apps/jobs/report.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
 
@@ -45,4 +45,9 @@ test("excludes jobs recorded as applied from later reports", () => {
   assert.match(formatJobReport(), /테스트회사/);
   setJobApplication(id, "applied");
   assert.doesNotMatch(formatJobReport(), /테스트회사/);
+});
+
+test("keeps a job digest in one Telegram message", () => {
+  assert.equal(formatJobReportPages([], { limit: 100 }).length, 1);
+  assert.ok(formatJobReportPages([], { limit: 100 })[0].length <= 4000);
 });

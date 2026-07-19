@@ -29,17 +29,16 @@ function buildJobReportPages(collection = [], { limit = 100 } = {}) {
       escapeHtml(`${row.company} — ${row.title}`.slice(0, 220)), result.summary ? escapeHtml(String(result.summary).slice(0, 260)) : null, link(row.url)].filter(Boolean).join("\n");
   });
   if (summary.failures.length) header.push("", `필터 오류 ${summary.failures.length}건: ${summary.failures[0].slice(0, 140)}`);
-  const pages = [{ text: header.join("\n"), items: [] }];
+  const page = { text: header.join("\n"), items: [] };
   for (const [offset, entry] of entries.entries()) {
-    const last = pages.length - 1;
     const item = { index: offset + 1, id: summary.selected[offset].id };
-    if (`${pages[last].text}\n${entry}`.length > telegramLimit) pages.push({ text: entry, items: [item] });
-    else {
-      pages[last].text = `${pages[last].text}\n${entry}`;
-      pages[last].items.push(item);
-    }
+    if (`${page.text}\n${entry}`.length > telegramLimit - 80) break;
+    page.text = `${page.text}\n${entry}`;
+    page.items.push(item);
   }
-  return pages;
+  const remaining = entries.length - page.items.length;
+  if (remaining > 0) page.text = `${page.text}\n\n외 ${remaining}건은 /jobs에서 다음 조회 시 확인할 수 있습니다.`;
+  return [page];
 }
 
 export function formatJobReportPages(collection = [], options = {}) { return buildJobReportPages(collection, options).map((page) => page.text); }
