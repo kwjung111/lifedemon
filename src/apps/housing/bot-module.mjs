@@ -33,7 +33,7 @@ function callbackParts(data) {
 
 export const housingBotModule = {
   id: "housing",
-  help: "🏠 주거 공고\n/housing_status : 지원 및 결과 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n결과 알림에 답장: ‘미선정, 컷라인 1순위 5점, 21호 공급’\n지침 예: ‘민간임대는 앞으로 제외해’",
+  help: "🏠 주거 공고\n/housing_status : 지원 및 결과 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n결과 알림에 답장: ‘미선정, 컷라인 2순위 7점, 50호 공급’\n지침 예: ‘민간임대는 앞으로 제외해’",
   commands: [
     { command: "housing_status", description: "🏠 지원 중인 주택 공고" },
     { command: "housing_guide", description: "🏠 공고 분석 기본 지침" },

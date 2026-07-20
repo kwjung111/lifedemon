@@ -65,13 +65,13 @@ test("prompts once after finding an official result and stops after outcome reco
 });
 
 test("parses the supplied cutoff and recommendation feedback", () => {
-  const parsed = parseHousingResultFeedback("서류심사 대상 미선정\n지원 주택: 광진구 능동에스하임Ⅱ 25B\n컷라인: 1순위 5점, 21호 공급\n다음 추천 기준: 공급호수 많고 2·3순위까지 내려간 매물을 우선 추천");
+  const parsed = parseHousingResultFeedback("서류심사 대상 미선정\n지원 주택: 테스트구 샘플하우스 39A\n컷라인: 2순위 7점, 50호 공급\n다음 추천 기준: 공급 규모와 후순위 도달 여부를 우선 추천");
   assert.equal(parsed.outcome, "not_selected");
-  assert.equal(parsed.housingName, "광진구 능동에스하임Ⅱ 25B");
-  assert.equal(parsed.cutoffPriority, 1);
-  assert.equal(parsed.cutoffScore, 5);
-  assert.equal(parsed.supplyUnits, 21);
-  assert.match(parsed.preference, /2·3순위/);
+  assert.equal(parsed.housingName, "테스트구 샘플하우스 39A");
+  assert.equal(parsed.cutoffPriority, 2);
+  assert.equal(parsed.cutoffScore, 7);
+  assert.equal(parsed.supplyUnits, 50);
+  assert.match(parsed.preference, /후순위/);
 });
 
 test("ranks evidenced second- and third-priority supply ahead when feedback enables it", () => {
