@@ -302,6 +302,15 @@ export class CodexAppServerClient {
       this.turns.set(turnId, { text: buffered?.text || "", resolve, reject, timer });
     });
   }
+
+  close() {
+    const proc = this.proc;
+    this.proc = null;
+    this.attachedThreads.clear();
+    if (!proc) return;
+    proc.stdin?.end();
+    if (!proc.killed) proc.kill("SIGTERM");
+  }
 }
 
 let defaultClient;
