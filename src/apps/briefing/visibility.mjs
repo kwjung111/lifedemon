@@ -157,22 +157,6 @@ function explainHousing(row) {
   if (row.recommendation_hidden || row.application_status === "ignored") return result("housing", row,
     "‘관심없어’ 또는 부정 피드백으로 이 공고가 추천에서 숨겨져 있습니다.",
     "다시 추천에 넣으려면 이 메시지에 ‘관심없음 취소’라고 답장하세요.", "ignored");
-  if (!row.active) return result("housing", row,
-    "공식 수집 목록에서 더 이상 활성 공고로 확인되지 않아 종료 처리됐습니다.",
-    "원문 링크에서 재공고 여부를 확인해 주세요.", "inactive");
-  if (row.verdict === "exclude") {
-    const housingRule = listHousingRules().find((rule) =>
-      normalized(`${row.title} ${row.raw_text}`).includes(normalized(rule.keyword))
-    );
-    if (housingRule) return result("housing", row,
-      `주택 제외 규칙 H${housingRule.id}과 일치해 초기 분류에서 제외됐습니다: ${housingRule.instruction}`,
-      "‘피드백 규칙 보여줘’에서 해당 H 번호를 삭제하면 다음 수집부터 다시 평가됩니다.",
-      "durable_rule");
-    return result("housing", row,
-      "초기 공고 분류에서 현재 주거 추천 대상이 아닌 것으로 제외됐습니다.",
-      "공고 조건이 변경되면 다음 수집에서 다시 분류됩니다.", "initial_exclude");
-  }
-
   const snapshot = housingReportSnapshot({ limit: 1000 });
   const shownIndex = snapshot.candidates.findIndex((candidate) => candidate.id === row.id);
   if (shownIndex >= 0) return result("housing", row,
@@ -188,6 +172,21 @@ function explainHousing(row) {
     row.application_status === "selected" ? "선정 결과가 기록되어 지원 결과 이력으로 이동했습니다."
       : "미선정 결과가 기록되어 진행 중 지원 목록에서 결과 이력으로 이동했습니다.",
     "/housing_status에서 결과 이력을 확인할 수 있어요.", row.application_status);
+  if (!row.active) return result("housing", row,
+    "공식 수집 목록에서 더 이상 활성 공고로 확인되지 않아 종료 처리됐습니다.",
+    "원문 링크에서 재공고 여부를 확인해 주세요.", "inactive");
+  if (row.verdict === "exclude") {
+    const housingRule = listHousingRules().find((rule) =>
+      normalized(`${row.title} ${row.raw_text}`).includes(normalized(rule.keyword))
+    );
+    if (housingRule) return result("housing", row,
+      `주택 제외 규칙 H${housingRule.id}과 일치해 초기 분류에서 제외됐습니다: ${housingRule.instruction}`,
+      "‘피드백 규칙 보여줘’에서 해당 H 번호를 삭제하면 다음 수집부터 다시 평가됩니다.",
+      "durable_rule");
+    return result("housing", row,
+      "초기 공고 분류에서 현재 주거 추천 대상이 아닌 것으로 제외됐습니다.",
+      "공고 조건이 변경되면 다음 수집에서 다시 분류됩니다.", "initial_exclude");
+  }
   const today = snapshot.today;
   if (row.apply_end && row.apply_end < today) return result("housing", row,
     `신청 마감일 ${row.apply_end}이 지나 신규 추천에서 빠졌습니다.`,
