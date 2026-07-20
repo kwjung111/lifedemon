@@ -53,13 +53,19 @@ The existing Telegram gateway includes a read-only operations assistant. Use
 Korean questions. Common questions may also be sent without a command, such as
 `채용공고 우선순위가 어떻게 돼?` or `수집이 마지막으로 언제 돌았지?`.
 
-Answers are grounded in a bounded snapshot containing private preference files,
-application state, collection telemetry, reminders, Calendar health, and a
-fixed allowlist of systemd units. Common health and priority questions are
-formatted directly without AI. More complex questions use a tool-free
-structured Codex request; user text can neither execute commands nor write to a
-database. Mutating operational actions are intentionally not exposed through
-this interface.
+Common health and priority questions are formatted directly from a bounded
+snapshot. More complex or causal questions start an autonomous read-only
+investigation. The agent may adaptively inspect an allowlisted Life Daemon
+service or timer, bounded journal logs, SQLite integrity and queue state, server
+resources, deployment state, configuration presence, fixed upstream network
+connectivity, deployed unit definitions, and bounded source-code matches.
+
+Every investigation uses strict structured actions, at most three adaptive
+rounds and eight tool calls. Tool implementations use fixed command argument
+lists: the model cannot supply a shell command, SQL statement, arbitrary unit,
+path, or host. Outputs are secret-redacted and bounded before the model sees
+them. The assistant can diagnose and recommend a next action, but mutating
+operational actions remain intentionally unavailable.
 
 ## Housing result feedback
 

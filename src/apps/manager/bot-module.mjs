@@ -1,4 +1,4 @@
-import { sendMessage } from "../../telegram.mjs";
+import { sendMessage, telegram } from "../../telegram.mjs";
 import { buildSystemSnapshot } from "./snapshot.mjs";
 import { answerManagerQuestion, looksLikeManagerQuestion } from "./query.mjs";
 
@@ -7,9 +7,10 @@ function stripCommand(text) {
 }
 
 export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer = answerManagerQuestion, send = sendMessage } = {}) {
+  let lastExchange = null;
   return {
     id: "manager",
-    help: "🧭 Life Daemon 관리\n/daemon : 전체 운영 상태\n/ask 질문 : 자연어로 채용·주택·수집·서비스·알림 상태 질문\n예: ‘채용공고 우선순위가 어떻게 돼?’, ‘수집이 마지막으로 언제 돌았지?’",
+    help: "🧭 Life Daemon 관리\n/daemon : 전체 운영 상태\n/ask 질문 : 읽기 전용 에이전트가 로그·서비스·DB·서버 상태를 자율 조사\n예: ‘채용공고 우선순위가 어떻게 돼?’, ‘채용 수집이 왜 실패했지?’",
     commands: [
       { command: "daemon", description: "🧭 전체 시스템 상태" },
       { command: "ask", description: "🧭 Life Daemon에 자연어로 질문" },
@@ -18,9 +19,32 @@ export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer 
     async handleMessage(message) {
       const text = String(message.text || "").trim();
       if (!looksLikeManagerQuestion(text)) return false;
-      const question = stripCommand(text) || "전체 시스템 상태와 최근 수집 시각을 알려줘";
-      const result = await answer(question, snapshot());
+      const rawQuestion = stripCommand(text) || "전체 시스템 상태와 최근 수집 시각을 알려줘";
+      const replyContext = message.reply_to_message?.from?.is_bot
+        ? String(message.reply_to_message.text || "").trim().slice(0, 2500)
+        : "";
+      const isFollowUp = /^(?:그거|그건|왜|원인|자세히|로그|그러면|그래서|어떻게)/.test(rawQuestion);
+      const recentContext = lastExchange && Date.now() - lastExchange.at < 15 * 60_000
+        ? `${lastExchange.question}\n${lastExchange.answer}`.slice(-2500)
+        : "";
+      const context = replyContext || (isFollowUp ? recentContext : "");
+      const question = context
+        ? `이전 대화:\n${context}\n\n현재 질문:\n${rawQuestion}`
+        : rawQuestion;
+      const showTyping = message.chat?.id
+        ? () => telegram("sendChatAction", { chat_id: message.chat.id, action: "typing" }).catch(() => null)
+        : null;
+      if (showTyping) await showTyping();
+      const heartbeat = showTyping ? setInterval(showTyping, 4000) : null;
+      heartbeat?.unref?.();
+      let result;
+      try {
+        result = await answer(question, snapshot());
+      } finally {
+        if (heartbeat) clearInterval(heartbeat);
+      }
       await send(result);
+      lastExchange = { question: rawQuestion, answer: result, at: Date.now() };
       return true;
     },
   };

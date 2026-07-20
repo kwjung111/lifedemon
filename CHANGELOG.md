@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0 - 2026-07-20
+
+### Changed
+
+- Replaced snapshot-only answers for complex operations questions with a multi-round autonomous read-only investigation loop.
+- Failure and root-cause questions can now adaptively inspect allowlisted systemd state and journals, SQLite health and queues, server resources, deployment state, configuration presence, fixed-host connectivity, unit definitions, and bounded source searches before answering.
+- Short follow-up questions such as `왜 실패했지?` reuse the previous in-memory manager exchange or the replied-to bot message as investigation context.
+
+### Security
+
+- Diagnostic actions are selected through a strict schema and mapped to fixed `execFile` argument lists; the model cannot supply commands, SQL, arbitrary units, or filesystem paths.
+- Investigations are capped at three adaptive rounds and eight tool calls, duplicate calls are skipped, and diagnostic output is length-bounded and secret-redacted before model use.
+
 ## 1.4.0 - 2026-07-20
 
 ### Added

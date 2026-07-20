@@ -1,6 +1,6 @@
 {
   "name": "monitor-platform",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,7 @@
     "gmail:authorize": "node src/admin/authorize-gmail.mjs",
     "gmail:inspect-wanted": "node src/admin/inspect-wanted-mail.mjs",
     "jobs:daily": "node src/jobs-daily.mjs",
-    "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/housing-results.mjs && node --check src/jobs-daily.mjs && node --check src/reminder-worker.mjs && node --check src/core/codex-structured.mjs && node --check src/apps/manager/bot-module.mjs && node --check src/apps/manager/query.mjs && node --check src/apps/manager/snapshot.mjs && node --check src/apps/reminders/worker-pass.mjs && node --check src/integrations/google-calendar.mjs && node --check src/integrations/gmail.mjs && node --check src/apps/housing/result-checker.mjs && node --check src/apps/housing/result-feedback.mjs && node --check src/apps/jobs/wanted-web-search.mjs && node --check src/apps/reminders/ai-parser.mjs && node --check src/admin/record-housing-result.mjs && node --check src/admin/search-wanted.mjs && node --check src/admin/notify-systemd-failure.mjs && node --check src/admin/google-calendar-env.mjs && node --check src/admin/authorize-google-calendar.mjs && node --check src/admin/install-google-calendar-env.mjs"
+    "check": "node --check src/bot.mjs && node --check src/daily.mjs && node --check src/housing-results.mjs && node --check src/jobs-daily.mjs && node --check src/reminder-worker.mjs && node --check src/core/codex-structured.mjs && node --check src/core/redact.mjs && node --check src/apps/manager/agent.mjs && node --check src/apps/manager/bot-module.mjs && node --check src/apps/manager/query.mjs && node --check src/apps/manager/read-only-tools.mjs && node --check src/apps/manager/snapshot.mjs && node --check src/apps/reminders/worker-pass.mjs && node --check src/integrations/google-calendar.mjs && node --check src/integrations/gmail.mjs && node --check src/apps/housing/result-checker.mjs && node --check src/apps/housing/result-feedback.mjs && node --check src/apps/jobs/wanted-web-search.mjs && node --check src/apps/reminders/ai-parser.mjs && node --check src/admin/record-housing-result.mjs && node --check src/admin/search-wanted.mjs && node --check src/admin/notify-systemd-failure.mjs && node --check src/admin/google-calendar-env.mjs && node --check src/admin/authorize-google-calendar.mjs && node --check src/admin/install-google-calendar-env.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.1"

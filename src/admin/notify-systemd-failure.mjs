@@ -1,17 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { sendMessage } from "../telegram.mjs";
-
-const secretPatterns = [
-  [/bot\d+:[A-Za-z0-9_-]+/g, "bot[REDACTED]"],
-  [/(token|key|secret|password)=([^\s&]+)/gi, "$1=[REDACTED]"],
-  [/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]"],
-];
+import { redactSecrets } from "../core/redact.mjs";
 
 export function sanitizeFailureText(value) {
-  let text = String(value || "");
-  for (const [pattern, replacement] of secretPatterns) text = text.replace(pattern, replacement);
-  return text.replace(/\x1b\[[0-9;]*m/g, "").trim().slice(-1800);
+  return redactSecrets(value, 1800);
 }
 
 function command(file, args) {
