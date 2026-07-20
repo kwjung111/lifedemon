@@ -26,7 +26,7 @@ const clean = (value, max = 500) => value == null ? null : String(value).replace
 
 export function correctInboxByRules(text) {
   const input = clean(text, 2000) || "";
-  if (/^(?:방금\s*(?:거|것)?\s*)?(?:취소|삭제|저장\s*(?:하지\s*마|취소))(?:해|해줘)?[.!\s]*$/.test(input)) {
+  if (/^(?:(?:방금\s*(?:거|것)?|이거)\s*)?(?:취소|삭제|저장\s*(?:하지\s*마|취소))(?:해|해줘)?[.!\s]*$/.test(input)) {
     return { action: "cancel", changes: {}, reason: input, classifier: "rules" };
   }
   if (/^(?:이거\s*)?(?:했어|완료|끝냈어|처리했어)[.!\s]*$/.test(input)) {

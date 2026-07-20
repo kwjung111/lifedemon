@@ -110,16 +110,15 @@ export function listInboxItems({ status = "active", limit = 20 } = {}) {
 export function updateInboxItem(id, changes, { reason = "natural correction", sourceMessageId = null } = {}) {
   const current = getInboxItem(id);
   if (!current) return null;
-  const allowed = {
-    kind: changes.kind,
-    title: clean(changes.title, 300),
-    source_url: clean(changes.sourceUrl, 2000),
-    event_at: changes.eventAt,
-    next_action: clean(changes.nextAction, 500),
-    status: changes.status,
-    assumptions_json: changes.assumptions ? json(changes.assumptions.slice(0, 6)) : undefined,
-  };
-  const entries = Object.entries(allowed).filter(([, value]) => value !== undefined);
+  const allowed = {};
+  if (Object.hasOwn(changes, "kind")) allowed.kind = changes.kind;
+  if (Object.hasOwn(changes, "title")) allowed.title = clean(changes.title, 300);
+  if (Object.hasOwn(changes, "sourceUrl")) allowed.source_url = clean(changes.sourceUrl, 2000);
+  if (Object.hasOwn(changes, "eventAt")) allowed.event_at = changes.eventAt;
+  if (Object.hasOwn(changes, "nextAction")) allowed.next_action = clean(changes.nextAction, 500);
+  if (Object.hasOwn(changes, "status")) allowed.status = changes.status;
+  if (Object.hasOwn(changes, "assumptions")) allowed.assumptions_json = json(changes.assumptions.slice(0, 6));
+  const entries = Object.entries(allowed);
   if (!entries.length) return current;
   const timestamp = now();
   db.exec("BEGIN IMMEDIATE");
