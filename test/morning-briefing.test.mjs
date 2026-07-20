@@ -9,7 +9,13 @@ const housingProfile = join(dataDir, "housing-profile.json");
 const jobProfile = join(dataDir, "job-profile.json");
 const companies = join(dataDir, "companies.json");
 writeFileSync(housingProfile, JSON.stringify({ birthDate: "1990-01-01", householdSize: 1 }));
-writeFileSync(jobProfile, JSON.stringify({ preferences: { preferredRoles: ["DevOps"] } }));
+writeFileSync(jobProfile, JSON.stringify({
+  preferences: { preferredRoles: ["DevOps"], excludedRoles: ["Backend"] },
+  companyFilters: {
+    jobplanet: { minimumRating: 2.5, excludeWhenMissing: true },
+    minimumEmployeeCount: 10,
+  },
+}));
 writeFileSync(companies, JSON.stringify([]));
 process.env.MONITOR_DATA_DIR = dataDir;
 process.env.HOUSING_DATA_DIR = dataDir;
