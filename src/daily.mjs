@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { collectAll } from "./collect.mjs";
 import { sendDailyReport } from "./report.mjs";
-import { pendingReviewNotices, recoverStaleReviewClaims } from "./db.mjs";
+import { pendingReviewNotices, recoverStaleReviewClaims, setSetting } from "./db.mjs";
 
 function runReviewWorker(timeoutMs = 45 * 60_000) {
   return new Promise((resolve) => {
@@ -51,5 +51,8 @@ const summary = await collectAll();
 console.log("collection", summary);
 const reviews = await runReviewWorker();
 console.log("agent reviews", reviews);
-await sendDailyReport(summary, reviews);
-console.log("daily report sent");
+setSetting("housing_review_last_summary", JSON.stringify({ completedAt: new Date().toISOString(), reviews }));
+if (String(process.env.DAILY_REPORT_ENABLED || "true").toLowerCase() !== "false") {
+  await sendDailyReport(summary, reviews);
+  console.log("daily report sent");
+} else console.log("daily report deferred to morning briefing");

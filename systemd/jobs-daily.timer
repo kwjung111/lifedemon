@@ -1,8 +1,8 @@
 [Unit]
-Description=Run job notice monitor weekdays at 09:20 KST
+Description=Prepare job notices weekdays before the morning briefing
 
 [Timer]
-OnCalendar=Mon..Fri *-*-* 09:20:00 Asia/Seoul
+OnCalendar=Mon..Fri *-*-* 07:40:00 Asia/Seoul
 Persistent=false
 RandomizedDelaySec=0
 Unit=jobs-daily.service

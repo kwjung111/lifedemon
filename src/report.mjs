@@ -72,9 +72,9 @@ export function rankHousingCandidates(
   });
 }
 
-export async function sendDailyReport(summary = [], reviewSummary = []) {
+export function housingReportSnapshot({ today = null, offset = 0, limit = Number.MAX_SAFE_INTEGER } = {}) {
   const notices = activeNotices();
-  const today = new Intl.DateTimeFormat("en-CA", {
+  const currentDate = today || new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
   const applied = appliedNotices();
@@ -82,13 +82,27 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   const allCandidates = notices.filter((notice) => {
     if (notice.application_status === "applied" || notice.recommendation_hidden || !["likely", "possible"].includes(notice.verdict)) return false;
     if (notice.ai_eligibility === "no" || notice.ai_status === "closed") return false;
-    if (notice.apply_end && notice.apply_end < today) return false;
+    if (notice.apply_end && notice.apply_end < currentDate) return false;
     const key = notice.title.replace(/\s*\d+일전\s*$/, "").replace(/\s+/g, " ").trim();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-  const candidates = rankHousingCandidates(allCandidates);
+  const ranked = rankHousingCandidates(allCandidates);
+  const start = Math.max(0, Number(offset) || 0);
+  const size = Math.max(0, Number(limit) || 0);
+  return {
+    notices,
+    applied,
+    allCandidates,
+    candidates: ranked.slice(start, start + size),
+    remaining: Math.max(0, ranked.length - start - size),
+    today: currentDate,
+  };
+}
+
+export async function sendDailyReport(summary = [], reviewSummary = []) {
+  const { notices, today, applied, allCandidates, candidates } = housingReportSnapshot();
   const exhaustedReviews = exhaustedReviewCount();
   const deferredReviews = reviewSummary.filter((item) => item.deferred).reduce((sum, item) => sum + (item.count || 0), 0);
   const completedReviews = reviewSummary.filter((item) => !item.error && !item.deferred).length;

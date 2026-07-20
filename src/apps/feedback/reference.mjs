@@ -48,7 +48,8 @@ export function resolveFeedbackTarget(text, items = []) {
 
 export function feedbackTargetQuestion(items, resolution = {}) {
   if (resolution.reason === "invalid_number") {
-    return `이 브리핑에는 ${items.length}개 공고가 있습니다. 1~${items.length}번 중에서 알려주세요.`;
+    const indexes = items.map((item) => Number(item.index)).filter(Number.isFinite);
+    return `이 브리핑에서 선택할 수 있는 번호는 ${indexes.join(", ")}번입니다.`;
   }
   return "어느 공고를 말하는지 한 번만 알려주세요. 예: ‘2번이 제일 나아’ 또는 회사명·공고 제목을 함께 말해 주세요.";
 }

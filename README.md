@@ -7,6 +7,7 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - LH·SH·청년안심주택·HUG·마이홈 주거 공고 수집
 - 서울 거주 1인 청년 관점의 1차 필터링
 - Telegram 단일 브리핑과 지원 상태 추적
+- 평일 09:00 오늘 일정·주택·채용 통합 브리핑과 필요할 때만 추가 조회
 - 사용자 제외 규칙 저장
 - 전역 리마인더 등록·승인·발송
 - 발표 시점의 공식 결과 링크 동적 탐색
@@ -49,7 +50,23 @@ npm run housing:results
 npm run jobs:collect
 npm run jobs:filter
 npm run jobs:daily
+npm run briefing
 ```
+
+## Morning briefing
+
+The scheduled user-facing report is one weekday message at 09:00 KST. Housing
+collection and AI review prepare data at 06:30, and job collection, company
+verification, and filtering prepare data at 07:40. These preparation jobs store
+all results but do not send separate daily messages.
+
+The briefing includes every actionable event due today, application counts, and
+at most the top three housing and top three job recommendations. A domain whose
+top recommendations did not change is reduced to `변경 없음`. Reply with normal
+language such as `4번 지원했어`; the mixed-domain context routes the number to
+the correct tracker. `주택 더 보여줘` or `채용 더 보여줘` returns only the next
+recommendations in one additional message. `/housing` and `/jobs` remain
+available for their existing detailed views.
 
 ## Low-friction feedback
 
@@ -187,13 +204,13 @@ automatic, while that private outcome requires one Telegram tap.
 
 The job pipeline has two separate stages. `jobs:collect` accesses only public listing and detail pages from Remember, Wanted, and JobKorea, then normalizes and deduplicates postings. It does not use the private profile or make suitability decisions.
 
-`jobs:filter` loads the private `JOB_USER_PROFILE_FILE`, applies deterministic company gates first, and asks AI to evaluate the remaining job descriptions against the natural-language profile. The profile and company verification import stay under the ignored `data/` directory or an external mode-600 production path. `/jobs` shows the latest filtered digest in Telegram; `jobs:daily` sends one message after collection and filtering.
+`jobs:filter` loads the private `JOB_USER_PROFILE_FILE`, applies deterministic company gates first, and asks AI to evaluate the remaining job descriptions against the natural-language profile. The profile and company verification import stay under the ignored `data/` directory or an external mode-600 production path. `/jobs` shows the latest detailed view in Telegram; the scheduled job stores its results for the combined morning briefing.
 
 JobKorea discovery uses its public search and public detail pages without login credentials. Wanted blocks direct server-side Playwright search even with a renewable user session, so the production collector runs non-interactive `codex --search exec` instead. It searches only official `wanted.co.kr/wd/<id>` pages for DevOps, DevSecOps, SRE, platform, cloud, and infrastructure roles, requires an active-posting signal, canonicalizes the Wanted ID, and then feeds verified results into the same deduplication and filtering pipeline. The Codex child process receives a minimal environment, a read-only sandbox, no repository workspace, and a strict JSON output schema.
 
 The first search attempt uses the server's ChatGPT-linked Codex login. When its error specifically indicates quota or authentication exhaustion, an API-backed retry is allowed only when `CODEX_API_FALLBACK_ENABLED=true` and `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) is configured. `CODEX_API_DAILY_CALL_LIMIT` caps fallback calls across processes, and the first switch each day queues a Telegram cost notice. Gmail remains a supplementary discovery channel: URLs found under the read-only `BOT/Wanted` label are passed to the same live verification prompt, but missing or delayed email never blocks web discovery.
 
-The production `jobs-daily.timer` runs one weekday digest at 09:20 KST. Install it with the other systemd units only after the private profile, company-verification import, Codex login, and optional Gmail credentials have been placed outside Git.
+The production `jobs-daily.timer` prepares data at 07:40 KST, and `morning-briefing.timer` sends the combined message at 09:00 KST. Install them only after the private profile, company-verification import, Codex login, and optional Gmail credentials have been placed outside Git.
 
 JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOBPLANET_PASSWORD`) and an ignored Playwright storage-state file (`JOBPLANET_STORAGE_STATE_FILE`). The daily pipeline refreshes active-company ratings and employee counts before filtering. Never commit credentials, cookies, or storage-state files. Missing verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
 

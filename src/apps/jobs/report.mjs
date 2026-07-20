@@ -18,7 +18,7 @@ function healthTime(value) {
   return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
 }
 
-function buildJobReportPages(collection = [], { limit = 100, filtering = [], verification = null } = {}) {
+export function jobReportSnapshot({ limit = 100, offset = 0 } = {}) {
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const excludedCompanies = listFeedbackRules("jobs", "exclude_company").map((rule) => rule.keyword);
@@ -29,10 +29,23 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
   const summary = jobAssessmentSummary(
     jobProfileFingerprint(profile),
     companyVerificationFingerprint(verifications),
-    limit,
+    Math.max(1, Number(limit) + Number(offset)),
     { excludedCompanies, preferredCompanies, semanticPreferences: semanticPreferences(feedbackEvents, "jobs") },
   );
   const applications = appliedJobs();
+  const start = Math.max(0, Number(offset) || 0);
+  const size = Math.max(0, Number(limit) || 0);
+  return {
+    summary,
+    applications,
+    selected: summary.selected.slice(start, start + size),
+    remaining: Math.max(0, summary.selected.length - start - size),
+  };
+}
+
+function buildJobReportPages(collection = [], { limit = 100, offset = 0, filtering = [], verification = null } = {}) {
+  const { summary, applications, selected, remaining: snapshotRemaining } = jobReportSnapshot({ limit, offset });
+  const verifications = loadAuthorizedCompanyVerifications();
   const collectionLine = collection.length ? collection.map((entry) => `${sourceLabel[entry.source] || entry.source} ${entry.error ? "오류" : entry.count}`).join(" · ") : "수집 결과 없음";
   const newCount = collection.reduce((total, item) => total + (item.newCount || 0), 0);
   const changedCount = collection.reduce((total, item) => total + (item.changedCount || 0), 0);
@@ -49,11 +62,11 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
     `지원 추적: ${applications.length}건`,
     "이 메시지에 평소 말투로 답장: ‘2번이 제일 나아’, ‘위시켓은 별로’, ‘이 회사 다음부터 빼줘’",
   ];
-  if (!summary.selected.length) {
+  if (!selected.length) {
     header.push("", "현재 조건을 통과한 공고가 없습니다.");
     if (!verifications.size) header.push("회사 검증 데이터가 아직 없어 엄격 필터가 모두 제외 중입니다.");
-  } else header.push("", `오늘 확인할 공고 (${summary.selected.length}건)`);
-  const entries = summary.selected.map((row, index) => {
+  } else header.push("", `오늘 확인할 공고 (${selected.length}건)`);
+  const entries = selected.map((row, index) => {
     const result = assessmentFor(row);
     return ["", `${index + 1}. ${row.decision === "pass" ? "✅ 적합" : "⚠️ 확인"} · ${sourceLabel[row.source] || row.source}`,
       escapeHtml(`${row.company} — ${row.title}`.slice(0, 220)), result.summary ? escapeHtml(String(result.summary).slice(0, 260)) : null, link(row.url)].filter(Boolean).join("\n");
@@ -61,12 +74,12 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
   if (summary.failures.length) header.push("", `필터 오류 ${summary.failures.length}건: ${summary.failures[0].slice(0, 140)}`);
   const page = { text: header.join("\n"), items: [] };
   for (const [offset, entry] of entries.entries()) {
-    const item = { index: offset + 1, id: summary.selected[offset].id };
+    const item = { index: offset + 1, id: selected[offset].id };
     if (`${page.text}\n${entry}`.length > telegramLimit - 80) break;
     page.text = `${page.text}\n${entry}`;
     page.items.push(item);
   }
-  const remaining = entries.length - page.items.length;
+  const remaining = snapshotRemaining + entries.length - page.items.length;
   if (remaining > 0) page.text = `${page.text}\n\n외 ${remaining}건은 알림 과다 방지를 위해 생략했습니다.`;
   return [page];
 }

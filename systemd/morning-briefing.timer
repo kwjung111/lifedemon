@@ -1,0 +1,11 @@
+[Unit]
+Description=Send combined morning briefing weekdays at 09:00 KST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:00:00 Asia/Seoul
+Persistent=false
+RandomizedDelaySec=0
+Unit=morning-briefing.service
+
+[Install]
+WantedBy=timers.target

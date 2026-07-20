@@ -88,10 +88,12 @@ export function createJobsBotModule({
     const replyMessageId = message.reply_to_message?.message_id;
     if (!replyMessageId) return false;
     const deliveryContext = telegramMessageContext(replyMessageId);
-    const feedbackText = deliveryContext?.pendingFeedback
+    const feedbackText = message.briefingFeedbackText || (deliveryContext?.pendingFeedback
       ? `${deliveryContext.pendingFeedback}\n추가 답변: ${text}`
-      : text;
-    const candidates = jobsForDigest(replyMessageId).map((job) => ({ ...job, index: job.item_index }));
+      : text);
+    const candidates = message.briefingTarget?.domain === "jobs"
+      ? [{ ...message.briefingTarget, ...getJobPosting(message.briefingTarget.id), index: message.briefingTarget.index }]
+      : jobsForDigest(replyMessageId).map((job) => ({ ...job, index: job.item_index }));
     if (deliveryContext?.domain === "jobs" && deliveryContext?.kind === "digest") {
       for (const item of deliveryContext.items || []) {
         if (candidates.some((candidate) => candidate.id === item.id)) continue;

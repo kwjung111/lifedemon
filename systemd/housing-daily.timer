@@ -1,8 +1,8 @@
 [Unit]
-Description=Run housing notice monitor weekdays at 09:00 KST
+Description=Prepare housing notices weekdays before the morning briefing
 
 [Timer]
-OnCalendar=Mon..Fri *-*-* 09:00:00 Asia/Seoul
+OnCalendar=Mon..Fri *-*-* 06:30:00 Asia/Seoul
 Persistent=false
 RandomizedDelaySec=0
 Unit=housing-daily.service

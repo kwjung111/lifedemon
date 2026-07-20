@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.12.0 - 2026-07-20
+
+### Added
+
+- Added one weekday 09:00 KST morning briefing that combines today's approved reminders, housing recommendations, job recommendations, and application counts.
+- Added `/briefing`, mixed-domain numbered replies, and natural `주택 더 보여줘` / `채용 더 보여줘` follow-up retrieval.
+- Added per-domain recommendation signatures so unchanged sections collapse to an explicit `변경 없음` instead of repeating the same list.
+
+### Changed
+
+- Housing collection and AI review now prepare data at 06:30 KST, and job collection/filtering prepares data at 07:40 KST; neither preparation job sends its former standalone digest.
+- The combined message shows at most three top recommendations per domain while retaining every collected and analyzed row for on-demand retrieval.
+
 ## 1.11.0 - 2026-07-20
 
 ### Added

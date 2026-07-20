@@ -18,6 +18,7 @@ export async function collectJobs(options = {}) {
   });
   const completedAt = new Date().toISOString();
   setJobSetting("job_collection_last_attempt_at", completedAt);
+  setJobSetting("job_collection_last_summary", JSON.stringify({ completedAt, summary }));
   if (summary.every((entry) => !entry.error)) setJobSetting("job_collection_last_success_at", completedAt);
   return summary;
 }

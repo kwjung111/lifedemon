@@ -163,10 +163,12 @@ export function createHousingBotModule({
 
     if (!replyMessageId) return false;
     const deliveryContext = telegramMessageContext(replyMessageId);
-    const feedbackText = deliveryContext?.pendingFeedback
+    const feedbackText = message.briefingFeedbackText || (deliveryContext?.pendingFeedback
       ? `${deliveryContext.pendingFeedback}\n추가 답변: ${text}`
-      : text;
-    const candidates = noticesForDigest(replyMessageId).map((notice) => ({ ...notice, index: notice.item_no }));
+      : text);
+    const candidates = message.briefingTarget?.domain === "housing"
+      ? [{ ...message.briefingTarget, ...getNotice(message.briefingTarget.id), index: message.briefingTarget.index }]
+      : noticesForDigest(replyMessageId).map((notice) => ({ ...notice, index: notice.item_no }));
     const directNotice = noticeForMessage(replyMessageId);
     if (directNotice) candidates.push({ ...directNotice, index: 1 });
     if (deliveryContext?.domain === "housing" && deliveryContext?.kind === "digest") {

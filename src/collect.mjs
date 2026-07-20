@@ -143,6 +143,7 @@ export async function collectAll() {
   }
   const completedAt = new Date().toISOString();
   setSetting("housing_collection_last_attempt_at", completedAt);
+  setSetting("housing_collection_last_summary", JSON.stringify({ completedAt, summary }));
   if (summary.every((entry) => !entry.error && !entry.skipped)) {
     setSetting("housing_collection_last_success_at", completedAt);
   }

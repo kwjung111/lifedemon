@@ -1,6 +1,6 @@
 {
   "name": "monitor-platform",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "gmail:authorize": "node src/admin/authorize-gmail.mjs",
     "gmail:inspect-wanted": "node src/admin/inspect-wanted-mail.mjs",
     "jobs:daily": "node src/jobs-daily.mjs",
+    "briefing": "node --env-file=/home/ubuntu/.config/monitor-platform/telegram.env src/morning-briefing.mjs",
     "backup": "node src/admin/backup-data.mjs",
     "check": "node scripts/check-syntax.mjs"
   },
