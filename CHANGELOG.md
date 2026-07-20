@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0 - 2026-07-20
+
+### Added
+
+- Added a shared feedback event store for housing and job recommendations, including positive, negative, applied, and ignored signals with bounded item metadata.
+- Natural replies such as `2번 별로야` now hide only that item, while `2번 이 회사는 앞으로 빼` creates a durable company-exclusion proposal.
+- Durable preference changes require one explicit `적용` or `취소` confirmation and retain their decision history.
+
+### Changed
+
+- Housing and job digests no longer show a separate `관심없어` button for every item. Only the high-value apply button remains; ordinary feedback is sent as a reply.
+- Housing exclusion instructions are proposed first instead of being applied immediately. Approved housing keyword rules feed the existing collector and reviewer, and approved job company rules hide future postings from that company.
+- Explicit positive job feedback modestly promotes later postings from the same company without bypassing hard eligibility or verification gates.
+- `/ask` snapshots now include recent feedback and active cross-domain feedback rules.
+
 ## 1.6.0 - 2026-07-20
 
 ### Added

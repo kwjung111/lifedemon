@@ -1,9 +1,10 @@
 import { housingBotModule } from "./apps/housing/bot-module.mjs";
 import { jobsBotModule } from "./apps/jobs/bot-module.mjs";
+import { feedbackBotModule } from "./apps/feedback/bot-module.mjs";
 import { managerBotModule } from "./apps/manager/bot-module.mjs";
 import { reminderBotModule } from "./apps/reminders/bot-module.mjs";
 
-export const botModules = [reminderBotModule, housingBotModule, jobsBotModule, managerBotModule];
+export const botModules = [reminderBotModule, housingBotModule, jobsBotModule, feedbackBotModule, managerBotModule];
 
 export function telegramMenuCommands() {
   const commands = [

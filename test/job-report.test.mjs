@@ -8,6 +8,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-job-report-"));
 const profileFile = join(dataDir, "profile.json");
 const companyFile = join(dataDir, "companies.json");
 process.env.JOB_DATA_DIR = dataDir;
+process.env.MONITOR_DATA_DIR = dataDir;
 process.env.JOB_USER_PROFILE_FILE = profileFile;
 process.env.JOB_COMPANY_VERIFICATION_FILE = companyFile;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
@@ -15,12 +16,13 @@ process.env.TELEGRAM_CHAT_ID = "1";
 writeFileSync(profileFile, JSON.stringify({ preferences: { preferredRoles: ["devops"], excludedRoles: ["backend"] }, companyFilters: { jobplanet: { minimumRating: 2.5, excludeWhenMissing: true }, minimumEmployeeCount: 11 } }));
 writeFileSync(companyFile, JSON.stringify([]));
 
-const { appliedJobs, jobDb, saveJobAssessment, setJobApplication, upsertJobPosting, upsertJobPostingWithStatus } = await import("../src/apps/jobs/db.mjs");
+const { appliedJobs, jobAssessmentSummary, jobDb, saveJobAssessment, setJobApplication, upsertJobPosting, upsertJobPostingWithStatus } = await import("../src/apps/jobs/db.mjs");
 const { formatJobApplicationStatus, formatJobReport, formatJobReportPages } = await import("../src/apps/jobs/report.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
+const { addFeedbackRule, platformDb } = await import("../src/core/state.mjs");
 
-test.after(() => { jobDb.close(); rmSync(dataDir, { recursive: true, force: true }); });
+test.after(() => { jobDb.close(); platformDb.close(); rmSync(dataDir, { recursive: true, force: true }); });
 
 test("reports strict verification status without exposing private profile", () => {
   const report = formatJobReport([{ source: "remember", count: 38, newCount: 2, changedCount: 1, deactivatedCount: 3 }, { source: "wanted", error: "session needed" }]);
@@ -85,4 +87,44 @@ test("tracks applied jobs separately from ignored jobs", () => {
   assert.equal(appliedJobs().some((job) => job.id === ignoredId), false);
   assert.match(formatJobApplicationStatus(), /지원회사/);
   assert.doesNotMatch(formatJobApplicationStatus(), /관심없는회사/);
+});
+
+test("hides future postings from a company after an approved global feedback rule", () => {
+  const id = upsertJobPosting({
+    source: "wanted", company: "전역제외회사", title: "Platform Engineer",
+    url: "https://www.wanted.co.kr/wd/999", rawText: "AWS Kubernetes",
+  });
+  const job = jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id);
+  saveJobAssessment(
+    job,
+    { decision: "pass", summary: "적합", reasons: [], concerns: [], evidence: [] },
+    jobProfileFingerprint(loadJobProfile()),
+    companyVerificationFingerprint(loadAuthorizedCompanyVerifications()),
+  );
+  assert.match(formatJobReport(), /전역제외회사/);
+  addFeedbackRule({
+    domain: "jobs", kind: "exclude_company", keyword: "전역제외회사", instruction: "전역제외회사 회사 제외",
+  });
+  assert.doesNotMatch(formatJobReport(), /전역제외회사/);
+});
+
+test("modestly promotes later postings from an explicitly liked company", () => {
+  const profileFingerprint = jobProfileFingerprint(loadJobProfile());
+  const verificationFingerprint = companyVerificationFingerprint(loadAuthorizedCompanyVerifications());
+  const fixtures = [
+    { company: "일반회사", title: "Cloud Engineer", id: "1001" },
+    { company: "선호회사", title: "SRE Engineer", id: "1002" },
+  ];
+  for (const fixture of fixtures) {
+    const id = upsertJobPosting({
+      source: "wanted", company: fixture.company, title: fixture.title,
+      url: `https://www.wanted.co.kr/wd/${fixture.id}`, rawText: "AWS Kubernetes",
+    });
+    const job = jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id);
+    saveJobAssessment(job, { decision: "pass", summary: "적합", reasons: [], concerns: [], evidence: [] }, profileFingerprint, verificationFingerprint);
+  }
+  const selected = jobAssessmentSummary(profileFingerprint, verificationFingerprint, 100, {
+    preferredCompanies: ["선호회사"],
+  }).selected;
+  assert.ok(selected.findIndex((job) => job.company === "선호회사") < selected.findIndex((job) => job.company === "일반회사"));
 });

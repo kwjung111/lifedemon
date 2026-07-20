@@ -86,6 +86,7 @@ function compactSnapshot(snapshot) {
     housing: snapshot?.housing?.collection,
     jobs: snapshot?.jobs?.collection,
     reminders: snapshot?.reminders,
+    feedback: snapshot?.feedback,
   };
 }
 

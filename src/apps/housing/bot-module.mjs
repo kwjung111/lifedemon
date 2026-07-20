@@ -1,6 +1,5 @@
 import {
   getNotice,
-  addHousingRule,
   applicationResult,
   applicationResultCheck,
   disableHousingRule,
@@ -17,8 +16,16 @@ import { sendMessage, telegram } from "../../telegram.mjs";
 import { sendStatus } from "../../report.mjs";
 import { HOUSING_BASE_INSTRUCTION, parseRuleCommand } from "./instructions.mjs";
 import { parseHousingResultFeedback } from "./result-feedback.mjs";
+import {
+  proposeExplicitRule,
+  ruleProposalKeyboard,
+  ruleProposalMessage,
+  saveEntityFeedback,
+} from "../feedback/service.mjs";
+import { recordFeedbackEvent } from "../../core/state.mjs";
 
 const appliedWords = /넣었|지원했|신청했|접수했/;
+const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래/;
 const datePattern = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/;
 
 function normalizedDate(text) {
@@ -54,11 +61,19 @@ export const housingBotModule = {
     }
     if (action === "ap") {
       setApplication(id, "applied");
+      recordFeedbackEvent({
+        domain: "housing", entityId: id, signal: "applied", rawText: "telegram callback",
+        metadata: { title: notice.title, source: notice.source },
+      });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "지원 상태로 저장했습니다." });
       const confirmation = await sendMessage(`✅ 지원 진행 중으로 저장했습니다.\n[${notice.source}] ${notice.title}\n\n발표일을 알면 이 메시지에 “2026-08-10 발표”처럼 답장해 주세요.`);
       saveTelegramMessage(confirmation.message_id, notice.id);
     } else if (action === "ig") {
       setApplication(id, "ignored");
+      recordFeedbackEvent({
+        domain: "housing", entityId: id, signal: "ignored", rawText: "telegram callback",
+        metadata: { title: notice.title, source: notice.source },
+      });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
     } else if (["rs", "rn"].includes(action)) {
       const outcome = action === "rs" ? "selected" : "not_selected";
@@ -80,6 +95,7 @@ export const housingBotModule = {
 
   async handleMessage(message) {
     const text = String(message.text || "").trim();
+    const replyMessageId = message.reply_to_message?.message_id;
     if (/^\/(?:housing_guide|housing_instructions|instructions)(?:@\w+)?$/i.test(text) || /^기본\s*지침\s*(?:보여줘)?$/i.test(text)) {
       await sendMessage(`🏠 주거 봇 기본 지침\n\n${HOUSING_BASE_INSTRUCTION}`);
       return true;
@@ -91,15 +107,27 @@ export const housingBotModule = {
         : "현재 적용 중인 추가 지침이 없습니다.");
       return true;
     }
-    const rule = parseRuleCommand(text);
+    const rule = replyMessageId ? null : parseRuleCommand(text);
     if (rule?.action === "delete") {
       const deleted = disableHousingRule(rule.id);
       await sendMessage(deleted ? `🗑️ ${rule.id}번 지침을 삭제했습니다.` : `활성 상태인 ${rule.id}번 지침을 찾지 못했습니다.`);
       return true;
     }
     if (rule?.action === "add") {
-      const saved = addHousingRule(rule);
-      await sendMessage(`⚙️ 지침을 저장했습니다. 다음 수집부터 적용합니다.\n${saved.id}. ${saved.instruction}\n\n/housing_rules : 전체 지침 확인`);
+      const existing = listHousingRules().find((item) => item.kind === rule.kind && item.keyword === rule.keyword);
+      if (existing) {
+        await sendMessage(`이미 적용 중인 지침입니다: ${existing.instruction}`);
+        return true;
+      }
+      const proposal = proposeExplicitRule({
+        domain: "housing",
+        kind: rule.kind,
+        keyword: rule.keyword,
+        instruction: rule.text,
+      });
+      await sendMessage(ruleProposalMessage(proposal, "다음 주택 수집부터 해당 키워드 공고 제외"), {
+        reply_markup: ruleProposalKeyboard(proposal),
+      });
       return true;
     }
     if (/^\/(?:housing_)?status(?:@\w+)?$/i.test(text) || /^(?:진행중|지원현황|뭐 넣었어)\s*$/i.test(text)) {
@@ -107,7 +135,6 @@ export const housingBotModule = {
       return true;
     }
 
-    const replyMessageId = message.reply_to_message?.message_id;
     if (!replyMessageId) return false;
     const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
     const replied = (itemNumber ? noticeForDigestItem(replyMessageId, itemNumber) : null)
@@ -141,6 +168,10 @@ export const housingBotModule = {
 
     if (appliedWords.test(text)) {
       setApplication(replied.id, "applied");
+      recordFeedbackEvent({
+        domain: "housing", entityId: replied.id, signal: "applied", rawText: text,
+        metadata: { title: replied.title, source: replied.source },
+      });
       await sendMessage(`✅ 지원 진행 중으로 저장했습니다: ${replied.title}\n발표일을 알면 같은 공고 메시지에 날짜를 답장해 주세요.`);
       return true;
     }
@@ -148,6 +179,22 @@ export const housingBotModule = {
     if (date) {
       setAnnouncementDate(replied.id, date);
       await sendMessage(`📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.`);
+      return true;
+    }
+    const entityFeedback = saveEntityFeedback({
+      domain: "housing",
+      entityId: replied.id,
+      text,
+      title: replied.title,
+      source: replied.source,
+    });
+    if (entityFeedback) {
+      if (ignoredWords.test(text)) {
+        setApplication(replied.id, "ignored");
+        await sendMessage(`알겠어요. 이 공고는 추천에서 제외했습니다: ${replied.title}`);
+      } else {
+        await sendMessage(`피드백을 저장했습니다: ${replied.title}`);
+      }
       return true;
     }
     await sendMessage("주거 브리핑에는 공고 번호를 붙여 답장해 주세요. 예: ‘3번 넣었어’");

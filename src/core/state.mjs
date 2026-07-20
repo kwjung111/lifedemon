@@ -35,6 +35,42 @@ db.exec(`
     owner TEXT NOT NULL,
     expires_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS feedback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    signal TEXT NOT NULL,
+    subject_type TEXT,
+    subject_value TEXT,
+    raw_text TEXT,
+    metadata_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS feedback_rule_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    source_event_id INTEGER,
+    target_ref TEXT,
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS feedback_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    UNIQUE(domain, kind, keyword)
+  );
 `);
 
 db.exec("BEGIN IMMEDIATE");
@@ -68,6 +104,90 @@ export function setPlatformSetting(key, value) {
     INSERT INTO settings(key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value
   `).run(key, String(value));
+}
+
+const feedbackSignals = new Set(["positive", "negative", "applied", "ignored"]);
+
+export function recordFeedbackEvent({
+  domain, entityId, signal, subjectType = null, subjectValue = null,
+  rawText = null, metadata = null,
+}) {
+  if (!domain || !entityId || !feedbackSignals.has(signal)) throw new Error("invalid feedback event");
+  const metadataJson = metadata ? JSON.stringify(metadata).slice(0, 4000) : null;
+  const result = db.prepare(`
+    INSERT INTO feedback_events(
+      domain, entity_id, signal, subject_type, subject_value,
+      raw_text, metadata_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(domain), String(entityId), signal,
+    subjectType ? String(subjectType) : null,
+    subjectValue ? String(subjectValue) : null,
+    rawText ? String(rawText).slice(0, 1000) : null,
+    metadataJson,
+    now(),
+  );
+  return db.prepare("SELECT * FROM feedback_events WHERE id=?").get(result.lastInsertRowid);
+}
+
+export function recentFeedbackEvents(limit = 20) {
+  return db.prepare(`
+    SELECT * FROM feedback_events ORDER BY id DESC LIMIT ?
+  `).all(Math.max(1, Math.min(100, Number(limit) || 20)));
+}
+
+export function createFeedbackRuleProposal({
+  domain, kind, keyword, instruction, sourceEventId = null,
+}) {
+  const existing = db.prepare(`
+    SELECT * FROM feedback_rule_proposals
+    WHERE domain=? AND kind=? AND keyword=? AND status='proposed'
+    ORDER BY id DESC LIMIT 1
+  `).get(domain, kind, keyword);
+  if (existing) return existing;
+  const result = db.prepare(`
+    INSERT INTO feedback_rule_proposals(
+      domain, kind, keyword, instruction, status, source_event_id, created_at
+    ) VALUES (?, ?, ?, ?, 'proposed', ?, ?)
+  `).run(domain, kind, keyword, instruction, sourceEventId, now());
+  return db.prepare("SELECT * FROM feedback_rule_proposals WHERE id=?").get(result.lastInsertRowid);
+}
+
+export function getFeedbackRuleProposal(id) {
+  return db.prepare("SELECT * FROM feedback_rule_proposals WHERE id=?").get(id) || null;
+}
+
+export function decideFeedbackRuleProposal(id, status, targetRef = null) {
+  if (!["approved", "rejected"].includes(status)) throw new Error("invalid feedback proposal status");
+  return db.prepare(`
+    UPDATE feedback_rule_proposals
+    SET status=?, target_ref=?, decided_at=?
+    WHERE id=? AND status='proposed'
+  `).run(status, targetRef, now(), id).changes > 0;
+}
+
+export function addFeedbackRule({ domain, kind, keyword, instruction }) {
+  db.prepare(`
+    INSERT INTO feedback_rules(domain, kind, keyword, instruction, enabled, created_at)
+    VALUES (?, ?, ?, ?, 1, ?)
+    ON CONFLICT(domain, kind, keyword) DO UPDATE SET
+      instruction=excluded.instruction, enabled=1
+  `).run(domain, kind, keyword, instruction, now());
+  return db.prepare(`
+    SELECT * FROM feedback_rules WHERE domain=? AND kind=? AND keyword=?
+  `).get(domain, kind, keyword);
+}
+
+export function listFeedbackRules(domain = null, kind = null) {
+  return db.prepare(`
+    SELECT * FROM feedback_rules
+    WHERE enabled=1 AND (? IS NULL OR domain=?) AND (? IS NULL OR kind=?)
+    ORDER BY id
+  `).all(domain, domain, kind, kind);
+}
+
+export function disableFeedbackRule(id) {
+  return db.prepare("UPDATE feedback_rules SET enabled=0 WHERE id=? AND enabled=1").run(id).changes > 0;
 }
 
 export function acquireCalendarSyncLease(calendarId, owner, acquiredAt, expiresAt) {

@@ -150,7 +150,12 @@ function preferredDuplicate(left, right) {
   return (sourcePriority[left.source] ?? 9) <= (sourcePriority[right.source] ?? 9) ? left : right;
 }
 
-export function jobAssessmentSummary(profileFingerprint, verificationFingerprint, limit = 12) {
+export function jobAssessmentSummary(profileFingerprint, verificationFingerprint, limit = 12, {
+  excludedCompanies = [],
+  preferredCompanies = [],
+} = {}) {
+  const excludedCompanyKeys = new Set(excludedCompanies.map(canonicalCompany).filter(Boolean));
+  const preferredCompanyKeys = new Set(preferredCompanies.map(canonicalCompany).filter(Boolean));
   const rows = jobDb.prepare(`
     SELECT p.*, a.decision, a.result_json, a.assessed_at, ja.status AS application_status
       FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
@@ -162,6 +167,7 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
     const key = canonicalJobKey(row);
     const group = groups.get(key) || { hidden: false, row: null };
     group.hidden ||= ["applied", "ignored"].includes(row.application_status);
+    group.hidden ||= excludedCompanyKeys.has(canonicalCompany(row.company));
     group.row = group.row ? preferredDuplicate(group.row, row) : row;
     groups.set(key, group);
   }
@@ -170,9 +176,12 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
   for (const row of uniqueRows) counts[row.decision] = (counts[row.decision] || 0) + 1;
   const selected = uniqueRows
     .filter((row) => ["pass", "uncertain"].includes(row.decision))
-    .sort((left, right) => (left.decision === right.decision
-      ? String(right.assessed_at).localeCompare(String(left.assessed_at))
-      : left.decision === "pass" ? -1 : 1))
+    .sort((left, right) => {
+      if (left.decision !== right.decision) return left.decision === "pass" ? -1 : 1;
+      const preferenceDifference = Number(preferredCompanyKeys.has(canonicalCompany(right.company)))
+        - Number(preferredCompanyKeys.has(canonicalCompany(left.company)));
+      return preferenceDifference || String(right.assessed_at).localeCompare(String(left.assessed_at));
+    })
     .slice(0, limit);
   const failures = jobDb.prepare(`
     SELECT q.last_error FROM job_filter_queue q JOIN job_postings p ON p.id=q.posting_id

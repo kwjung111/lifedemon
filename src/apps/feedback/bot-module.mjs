@@ -1,0 +1,102 @@
+import { addHousingRule, disableHousingRule, listHousingRules } from "../../db.mjs";
+import {
+  addFeedbackRule,
+  decideFeedbackRuleProposal,
+  disableFeedbackRule,
+  getFeedbackRuleProposal,
+  listFeedbackRules,
+} from "../../core/state.mjs";
+import { sendMessage, telegram } from "../../telegram.mjs";
+
+function applyProposal(proposal) {
+  if (proposal.domain === "housing" && proposal.kind === "exclude_keyword") {
+    const rule = addHousingRule({
+      kind: proposal.kind,
+      keyword: proposal.keyword,
+      text: proposal.instruction,
+    });
+    return `housing:${rule.id}`;
+  }
+  if (proposal.domain === "jobs" && proposal.kind === "exclude_company") {
+    const rule = addFeedbackRule(proposal);
+    return `feedback:${rule.id}`;
+  }
+  throw new Error("지원하지 않는 피드백 규칙입니다.");
+}
+
+export function createFeedbackBotModule({
+  getProposal = getFeedbackRuleProposal,
+  decide = decideFeedbackRuleProposal,
+  apply = applyProposal,
+  send = sendMessage,
+  telegramApi = telegram,
+} = {}) {
+  return {
+    id: "feedback",
+    help: "💬 피드백\n공고 메시지에 ‘2번 별로야’, ‘2번 이 회사는 앞으로 빼’처럼 답장\n영구 규칙은 적용 전에 한 번만 확인\n‘피드백 규칙 보여줘’로 확인·삭제",
+    commands: [],
+
+    canHandleCallback(query) {
+      return /^f:(?:ap|cn):\d+$/.test(String(query.data || ""));
+    },
+
+    async handleCallback(query) {
+      const [, action, rawId] = String(query.data || "").split(":");
+      const proposal = getProposal(Number(rawId));
+      if (!proposal || proposal.status !== "proposed") {
+        await telegramApi("answerCallbackQuery", {
+          callback_query_id: query.id,
+          text: "이미 처리됐거나 찾을 수 없는 제안입니다.",
+        });
+        return;
+      }
+      if (action === "cn") {
+        decide(proposal.id, "rejected");
+        await telegramApi("answerCallbackQuery", { callback_query_id: query.id, text: "규칙을 적용하지 않았습니다." });
+        await send(`취소했습니다: ${proposal.instruction}`);
+        return;
+      }
+      try {
+        const targetRef = apply(proposal);
+        decide(proposal.id, "approved", targetRef);
+        await telegramApi("answerCallbackQuery", { callback_query_id: query.id, text: "규칙을 적용했습니다." });
+        await send(`⚙️ 앞으로 적용합니다: ${proposal.instruction}`);
+      } catch (error) {
+        await telegramApi("answerCallbackQuery", {
+          callback_query_id: query.id,
+          text: "규칙 적용에 실패했습니다.",
+          show_alert: true,
+        });
+        throw error;
+      }
+    },
+
+    async handleMessage(message) {
+      const text = String(message.text || "").trim();
+      if (/^\/?feedback_rules(?:@\w+)?$/i.test(text) || /^피드백[ \t]*규칙(?:[ \t]*(?:목록|보여줘))?$/.test(text)) {
+        const jobRules = listFeedbackRules("jobs");
+        const housingRules = listHousingRules();
+        const lines = [
+          "적용 중인 피드백 규칙",
+          "",
+          ...jobRules.map((rule) => `J${rule.id}. ${rule.instruction}`),
+          ...housingRules.map((rule) => `H${rule.id}. ${rule.instruction}`),
+        ];
+        if (!jobRules.length && !housingRules.length) lines.push("현재 적용 중인 규칙이 없습니다.");
+        else lines.push("", "삭제 예: ‘J2 규칙 삭제’ 또는 ‘H3 규칙 삭제’");
+        await send(lines.join("\n"));
+        return true;
+      }
+      const deletion = text.match(/^([JH])(\d+)[ \t]*규칙[ \t]*(?:삭제|취소)$/i);
+      if (!deletion) return false;
+      const id = Number(deletion[2]);
+      const deleted = deletion[1].toUpperCase() === "J"
+        ? disableFeedbackRule(id)
+        : disableHousingRule(id);
+      await send(deleted ? `${deletion[1].toUpperCase()}${id} 규칙을 삭제했습니다.` : "활성 상태인 규칙을 찾지 못했습니다.");
+      return true;
+    },
+  };
+}
+
+export const feedbackBotModule = createFeedbackBotModule();

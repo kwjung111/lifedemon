@@ -8,11 +8,14 @@ Life Daemon is a personal automation platform, not a single-purpose housing bot.
 - `src/apps/housing/`: Housing-specific commands and interactions.
 - `src/apps/jobs/`: Job-notice collectors, company verification, profile filtering, reports, and interaction state.
 - `src/apps/reminders/`: Global event proposals, approval, listing, and delivery shared by every app.
+- `src/apps/feedback/`: Shared explicit feedback parsing, durable-rule proposals, and approval routing; domain adapters apply approved rules.
 - `src/telegram.mjs`: Shared Telegram client. It has no housing or jobs business rules.
 - `src/bot.mjs`: Composition root. It registers enabled app modules with the shared runtime.
 - `data/platform.sqlite`: Shared gateway settings, reminder state, Calendar mappings, and synchronization leases; domain-specific housing and job data stay in app-owned databases.
 
 Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
+
+Feedback is explicit and low-friction. Recommendation messages retain only their primary apply action; positive and negative signals arrive as numbered natural-language replies and are stored in `platform.sqlite`. Silence is never interpreted as rejection. Item-level negatives hide only the referenced item. Durable wording creates a proposal under the `f:` callback namespace, and only an approved proposal is applied through a domain adapter. Housing adapters write the existing keyword-rule store; job company rules are consulted when building every later digest.
 
 The manager app starts from a read-only cross-domain projection gathered from app-owned query APIs, private profiles, Calendar/reminder state, and a fixed systemd unit allowlist. Deterministic formatters answer common priority, collection, and health questions immediately. `/ask` is backed by one persisted Codex app-server thread. The bot resumes that thread after restarts, injects a fresh cross-domain snapshot and `account/rateLimits/read` result into each turn, and enforces `read-only` at the thread plus turn boundaries with command-network access disabled and approvals set to `never`. The child process receives a sanitized environment, and its durable developer instruction prohibits secret access and all mutations.
 

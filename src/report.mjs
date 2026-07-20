@@ -152,10 +152,9 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   }
   for (const page of pages) {
     page.lines.push("", "※ 자격·공식 근거가 불확실한 점수는 ‘(추정)’으로 표시합니다.");
-    page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 2026-08-10 발표’");
+    page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 별로야’, ‘3번 2026-08-10 발표’");
     const keyboard = page.notices.map((notice, index) => [
-      { text: `${index + 1} ✅`, callback_data: `h:ap:${notice.id}` },
-      { text: `${index + 1} 🙈`, callback_data: `h:ig:${notice.id}` },
+      { text: `${index + 1}번 신청했어`, callback_data: `h:ap:${notice.id}` },
       { text: `${index + 1} 원문`, url: notice.url },
     ]);
     const message = await sendMessage(page.lines.join("\n").slice(0, 4090), {

@@ -1,9 +1,15 @@
 import { sendJobApplicationStatus, sendJobReport } from "./report.mjs";
 import { getJobPosting, jobForDigestItem, setJobApplication } from "./db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
+import { recordFeedbackEvent } from "../../core/state.mjs";
+import {
+  ruleProposalKeyboard,
+  ruleProposalMessage,
+  saveEntityFeedback,
+} from "../feedback/service.mjs";
 
 const appliedWords = /지원했|지원함|지원 완료|넣었|접수했/;
-const ignoredWords = /관심\s*없|추천\s*제외|안\s*볼래/;
+const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래|이\s*회사.*(?:빼|제외)|회사.*(?:빼|제외)/;
 
 export const jobsBotModule = {
   id: "jobs",
@@ -26,10 +32,18 @@ export const jobsBotModule = {
     }
     if (action === "ap") {
       setJobApplication(id, "applied");
+      recordFeedbackEvent({
+        domain: "jobs", entityId: id, signal: "applied", subjectType: "company", subjectValue: job.company,
+        rawText: "telegram callback", metadata: { company: job.company, title: job.title, source: job.source },
+      });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "지원 추적 중으로 저장했습니다." });
       await sendMessage(`✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}\n\n/job_status : 지원 현황 확인`);
     } else {
       setJobApplication(id, "ignored");
+      recordFeedbackEvent({
+        domain: "jobs", entityId: id, signal: "ignored", subjectType: "company", subjectValue: job.company,
+        rawText: "telegram callback", metadata: { company: job.company, title: job.title, source: job.source },
+      });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
       await sendMessage(`🚫 관심 없음으로 저장했습니다. 추천에서만 제외하며 지원 이력에는 넣지 않습니다.\n${job.company} — ${job.title}`);
     }
@@ -47,15 +61,39 @@ export const jobsBotModule = {
     }
     const replyMessageId = message.reply_to_message?.message_id;
     const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
-    if (!replyMessageId || !itemNumber || (!appliedWords.test(text) && !ignoredWords.test(text))) return false;
+    if (!replyMessageId || !itemNumber) return false;
     const job = jobForDigestItem(replyMessageId, itemNumber);
     if (!job) return false;
     if (appliedWords.test(text)) {
       setJobApplication(job.id, "applied");
+      recordFeedbackEvent({
+        domain: "jobs", entityId: job.id, signal: "applied", subjectType: "company", subjectValue: job.company,
+        rawText: text, metadata: { company: job.company, title: job.title, source: job.source },
+      });
       await sendMessage(`✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}\n\n/job_status : 지원 현황 확인`);
-    } else {
+      return true;
+    }
+    const feedback = saveEntityFeedback({
+      domain: "jobs",
+      entityId: job.id,
+      text,
+      title: job.title,
+      company: job.company,
+      source: job.source,
+    });
+    if (!feedback) return false;
+    if (ignoredWords.test(text)) {
       setJobApplication(job.id, "ignored");
-      await sendMessage(`🚫 관심 없음으로 저장했습니다. 추천에서만 제외하며 지원 이력에는 넣지 않습니다.\n${job.company} — ${job.title}`);
+      if (feedback.proposal) {
+        await sendMessage(ruleProposalMessage(
+          feedback.proposal,
+          `이 공고는 즉시 숨기고, 승인하면 ${job.company}의 향후 공고도 제외`,
+        ), { reply_markup: ruleProposalKeyboard(feedback.proposal) });
+      } else {
+        await sendMessage(`알겠어요. 이 공고는 추천에서 제외했습니다.\n${job.company} — ${job.title}`);
+      }
+    } else {
+      await sendMessage(`피드백을 저장했습니다.\n${job.company} — ${job.title}`);
     }
     return true;
   },

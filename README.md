@@ -46,6 +46,28 @@ npm run jobs:filter
 npm run jobs:daily
 ```
 
+## Low-friction feedback
+
+Housing and job digests keep only the primary `신청했어` or `지원했어` action
+button. Other feedback is sent by replying to the digest with the item number:
+
+```text
+2번 별로야
+3번 괜찮네
+2번 이 회사는 앞으로 빼
+```
+
+Item feedback is stored in the shared platform database. A negative reply hides
+that item but does not silently become a permanent preference. Wording that
+clearly requests a durable rule creates a single `적용`/`취소` confirmation.
+Approved company rules hide later job postings from the same normalized company,
+and approved housing keyword rules enter the existing housing collection and AI
+review instructions. Messages that receive no reply are not treated as negative
+feedback. Explicit positive job feedback modestly promotes later postings from
+the same company, but never overrides hard role or company-verification gates.
+Send `피드백 규칙 보여줘` to review active durable rules and delete one with a
+reply such as `J2 규칙 삭제` or `H3 규칙 삭제`.
+
 ## Life Daemon operations assistant
 
 The existing Telegram gateway includes a read-only operations assistant. Use

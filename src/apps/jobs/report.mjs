@@ -2,6 +2,7 @@ import { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } fr
 import { appliedJobs, getJobSetting, jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
+import { listFeedbackRules, recentFeedbackEvents } from "../../core/state.mjs";
 
 const sourceLabel = { remember: "리멤버", wanted: "원티드", jobkorea: "잡코리아" };
 const telegramLimit = 4000;
@@ -19,7 +20,16 @@ function healthTime(value) {
 function buildJobReportPages(collection = [], { limit = 100, filtering = [], verification = null } = {}) {
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
-  const summary = jobAssessmentSummary(jobProfileFingerprint(profile), companyVerificationFingerprint(verifications), limit);
+  const excludedCompanies = listFeedbackRules("jobs", "exclude_company").map((rule) => rule.keyword);
+  const preferredCompanies = recentFeedbackEvents(100)
+    .filter((event) => event.domain === "jobs" && event.signal === "positive" && event.subject_type === "company")
+    .map((event) => event.subject_value);
+  const summary = jobAssessmentSummary(
+    jobProfileFingerprint(profile),
+    companyVerificationFingerprint(verifications),
+    limit,
+    { excludedCompanies, preferredCompanies },
+  );
   const applications = appliedJobs();
   const collectionLine = collection.length ? collection.map((entry) => `${sourceLabel[entry.source] || entry.source} ${entry.error ? "오류" : entry.count}`).join(" · ") : "수집 결과 없음";
   const newCount = collection.reduce((total, item) => total + (item.newCount || 0), 0);
@@ -35,6 +45,7 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
     `마지막 정상 수집: ${healthTime(getJobSetting("job_collection_last_success_at"))}`,
     `판정: 적합 ${summary.counts.pass || 0} · 확인 ${summary.counts.uncertain || 0} · 제외 ${summary.counts.exclude || 0}`,
     `지원 추적: ${applications.length}건`,
+    "답장 예: ‘2번 지원했어’, ‘2번 별로야’, ‘2번 이 회사는 앞으로 빼’",
   ];
   if (!summary.selected.length) {
     header.push("", "현재 조건을 통과한 공고가 없습니다.");
@@ -69,7 +80,6 @@ export async function sendJobReport(collection = [], options = {}) {
         reply_markup: {
           inline_keyboard: page.items.map((item) => [
             { text: `${item.index}번 지원했어`, callback_data: `j:ap:${item.id}` },
-            { text: `${item.index}번 관심없어`, callback_data: `j:ig:${item.id}` },
           ]),
         },
       } : {}),

@@ -18,7 +18,12 @@ import {
   loadAuthorizedCompanyVerifications,
 } from "../jobs/company-verification.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "../jobs/profile.mjs";
-import { getPlatformSetting, listReminders } from "../../core/state.mjs";
+import {
+  getPlatformSetting,
+  listFeedbackRules,
+  listReminders,
+  recentFeedbackEvents,
+} from "../../core/state.mjs";
 import { calendarSyncStatus } from "../../integrations/google-calendar.mjs";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
@@ -102,6 +107,12 @@ function jobsSnapshot() {
       jobProfileFingerprint(profile),
       companyVerificationFingerprint(verifications),
       10,
+      {
+        excludedCompanies: listFeedbackRules("jobs", "exclude_company").map((rule) => rule.keyword),
+        preferredCompanies: recentFeedbackEvents(100)
+          .filter((event) => event.domain === "jobs" && event.signal === "positive" && event.subject_type === "company")
+          .map((event) => event.subject_value),
+      },
     );
     return {
       profile,
@@ -160,6 +171,12 @@ export function buildSystemSnapshot({ now = new Date(), systemctl = defaultSyste
     housing: housingSnapshot(),
     jobs: jobsSnapshot(),
     reminders: remindersSnapshot(),
+    feedback: {
+      activeRules: listFeedbackRules().map(({ domain, kind, keyword, instruction }) => ({ domain, kind, keyword, instruction })),
+      recent: recentFeedbackEvents(10).map(({ domain, entity_id, signal, subject_type, subject_value, created_at }) => ({
+        domain, entityId: entity_id, signal, subjectType: subject_type, subjectValue: subject_value, createdAt: created_at,
+      })),
+    },
     services: serviceSnapshot(systemctl),
   };
 }
