@@ -4,8 +4,17 @@ import { feedbackBotModule } from "./apps/feedback/bot-module.mjs";
 import { managerBotModule } from "./apps/manager/bot-module.mjs";
 import { reminderBotModule } from "./apps/reminders/bot-module.mjs";
 import { briefingBotModule } from "./apps/briefing/bot-module.mjs";
+import { inboxBotModule } from "./apps/inbox/bot-module.mjs";
 
-export const botModules = [reminderBotModule, briefingBotModule, housingBotModule, jobsBotModule, feedbackBotModule, managerBotModule];
+export const botModules = [
+  reminderBotModule,
+  briefingBotModule,
+  housingBotModule,
+  jobsBotModule,
+  feedbackBotModule,
+  managerBotModule,
+  inboxBotModule,
+];
 
 export function telegramMenuCommands() {
   const commands = [

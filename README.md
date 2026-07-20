@@ -15,6 +15,7 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - 한국어 자연어 리마인더와 전용 Google Calendar 양방향 동기화
 - systemd 기반 상시 실행과 평일 스케줄링
 - SQLite 상태 일일 백업과 30일 보관
+- 형식 없는 Life Inbox 입력과 자연어 수정·취소
 
 향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
 
@@ -67,6 +68,12 @@ language such as `4번 지원했어`; the mixed-domain context routes the number
 the correct tracker. `주택 더 보여줘` or `채용 더 보여줘` returns only the next
 recommendations in one additional message. `/housing` and `/jobs` remain
 available for their existing detailed views.
+
+## Life Inbox
+
+Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. Clear inputs are classified locally; only ambiguous free text uses Codex. The bot responds once with what it saved, the smallest assumptions it made, and the next action. Reply to that confirmation in ordinary Korean to correct, complete, or cancel the item. `/inbox` shows the current bounded list, and at most three active next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+
+Classifier telemetry records rule/AI call counts and bounded input/output character counts in `platform.sqlite`; it does not store or claim exact provider token usage. Set `INBOX_AI_ENABLED=false` to keep every otherwise ambiguous statement as a reversible note without an AI call.
 
 ## Low-friction feedback
 

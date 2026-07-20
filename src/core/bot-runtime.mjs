@@ -39,8 +39,9 @@ export function createBotRuntime({
 
   async function handleMessage(message) {
     if (!authorized(message)) return;
-    const text = String(message.text || "").trim();
-    if (!text) return;
+    const text = String(message.text || message.caption || "").trim();
+    const hasAttachment = Boolean(message.document || message.photo || message.video || message.voice);
+    if (!text && !hasAttachment) return;
     const routeMeta = {
       messageId: message.message_id || null,
       replyToMessageId: message.reply_to_message?.message_id || null,

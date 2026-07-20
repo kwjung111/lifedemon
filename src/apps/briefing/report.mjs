@@ -8,6 +8,7 @@ import {
   setPlatformSetting,
 } from "../../core/state.mjs";
 import { sendMessage } from "../../telegram.mjs";
+import { listInboxItems } from "../inbox/store.mjs";
 
 const escapeHtml = (value) => String(value || "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -80,6 +81,7 @@ export function morningBriefingSnapshot({ now = new Date(), housingLimit = 3, jo
   return {
     date: kstDate(now),
     actions: todayActions({ reminders: listReminders(), appliedHousing: housing.applied, now }),
+    inbox: listInboxItems({ limit: 3 }),
     housing: { ...housing, ...housingChanges, changed: housingChanged, signature: housingSignature },
     jobs: { ...jobs, ...jobChanges, changed: jobsChanged, signature: jobSignature },
     collectionAt: { housing: housingCollection.completedAt, jobs: jobCollection.completedAt },
@@ -96,6 +98,14 @@ export function formatMorningBriefing(snapshot) {
     }
     if (snapshot.actions.length > 12) lines.push(`• 외 ${snapshot.actions.length - 12}개 · /reminders에서 확인`);
   } else lines.push("", "🚨 오늘 확정된 일정 없음");
+
+  if (snapshot.inbox?.length) {
+    lines.push("", `📥 다음 행동 ${snapshot.inbox.length}개`);
+    for (const item of snapshot.inbox) {
+      const at = item.event_at ? ` · ${kstDateTime(item.event_at)}` : "";
+      lines.push(`• ${escapeHtml(item.next_action)} — ${escapeHtml(item.title)}${at}`);
+    }
+  }
 
   const items = [];
   const housingShow = snapshot.housing.changed;

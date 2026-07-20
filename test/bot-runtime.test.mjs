@@ -54,6 +54,16 @@ test("requires both the private chat and authorized user", async () => {
   assert.equal(sent.length, 0);
 });
 
+test("routes captionless attachments to modules", async () => {
+  const { bot, sent, logs } = runtime({ handled: true });
+  await bot.handleMessage({
+    message_id: 15, chat: { id: 1, type: "private" }, from: { id: 1 },
+    document: { file_id: "file-1", file_name: "note.pdf" },
+  });
+  assert.equal(sent.length, 0);
+  assert.equal(logs[0][1].module, "test");
+});
+
 test("does not commit a failed update before processing succeeds", async () => {
   const transitions = [];
   let shouldFail = true;

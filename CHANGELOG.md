@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.13.0 - 2026-07-20
+
+### Added
+
+- Added a modular Life Inbox for command-free events, tasks, links, notes, and Telegram attachment metadata.
+- Added assumption-visible saves, conclusion-first single-message confirmations, explicit next actions, natural reply corrections/completion/cancellation, and natural feedback capture.
+- Added app-owned item revision history and rules-vs-AI classifier usage telemetry.
+
+### Changed
+
+- The Telegram runtime now routes captions and captionless supported attachments, with Life Inbox registered last so existing reminder, briefing, housing, job, feedback, and manager semantics keep precedence.
+- The weekday morning briefing includes at most three active Life Inbox next actions inside the existing single message.
+
 ## 1.12.0 - 2026-07-20
 
 ### Added
