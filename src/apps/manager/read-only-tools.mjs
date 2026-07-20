@@ -34,6 +34,7 @@ export const diagnosticToolNames = [
   "environment_health",
   "network_status",
   "code_search",
+  "code_history",
 ];
 
 const allowedUnits = new Set(diagnosticUnits);
@@ -160,7 +161,8 @@ async function networkStatus({ dnsLookup = lookup, connect = tcpCheck } = {}) {
 }
 
 export async function searchRepositorySource(query, root = repoPath) {
-  const terms = String(query || "").toLowerCase().split(/\s+/).filter((term) => term.length >= 2);
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9가-힣]/g, "");
+  const terms = String(query || "").split(/\s+/).map(normalize).filter((term) => term.length >= 2);
   if (!terms.length) throw new Error("code search query has no usable terms");
   const files = [join(root, "package.json")];
   const pending = [join(root, "src"), join(root, "systemd")];
@@ -178,15 +180,31 @@ export async function searchRepositorySource(query, root = repoPath) {
     const text = await readFile(file, "utf8");
     const lines = text.split(/\r?\n/);
     for (let index = 0; index < lines.length; index += 1) {
-      const candidate = lines[index].toLowerCase();
-      if (!terms.every((term) => candidate.includes(term))) continue;
       const start = Math.max(0, index - 2);
       const end = Math.min(lines.length, index + 3);
-      matches.push(`${relative(root, file)}:${index + 1}\n${lines.slice(start, end).map((line, offset) => `${start + offset + 1}: ${line}`).join("\n")}`);
-      if (matches.length >= 80) return matches.join("\n\n");
+      const filePath = relative(root, file);
+      const candidate = normalize(`${filePath} ${lines.slice(start, end).join(" ")}`);
+      const score = terms.reduce((total, term) => total + (candidate.includes(term) ? 1 : 0), 0);
+      if (!score) continue;
+      matches.push({
+        score,
+        file: filePath,
+        line: index + 1,
+        text: `${filePath}:${index + 1}\n${lines.slice(start, end).map((line, offset) => `${start + offset + 1}: ${line}`).join("\n")}`,
+      });
     }
   }
-  return matches.length ? matches.join("\n\n") : "No source matches found.";
+  matches.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.line - right.line);
+  const selected = [];
+  const seen = new Set();
+  for (const match of matches) {
+    const window = `${match.file}:${Math.floor((match.line - 1) / 5)}`;
+    if (seen.has(window)) continue;
+    seen.add(window);
+    selected.push(match.text);
+    if (selected.length >= 40) break;
+  }
+  return selected.length ? selected.join("\n\n") : "No source matches found.";
 }
 
 function normalizeCall(call) {
@@ -262,7 +280,7 @@ export async function executeReadOnlyTool(call, {
     case "deployment_status":
       output = {
         status: await command("/usr/bin/git", ["-C", repoPath, "status", "--short", "--branch"]),
-        revision: await command("/usr/bin/git", ["-C", repoPath, "log", "-5", "--format=%h %cI %s %d"]),
+        revision: await command("/usr/bin/git", ["-C", repoPath, "log", "-12", "--format=%h %cI %s %d"]),
       };
       break;
     case "environment_health":
@@ -274,6 +292,13 @@ export async function executeReadOnlyTool(call, {
     case "code_search":
       if (normalized.query.length < 2) throw new Error("code search query is too short");
       output = await search(normalized.query);
+      break;
+    case "code_history":
+      if (normalized.query.length < 3) throw new Error("code history query is too short");
+      output = await command("/usr/bin/git", [
+        "-C", repoPath, "log", "--all", "--max-count=12", "--date=iso-strict",
+        "--format=%h %cI %s", `-S${normalized.query}`, "--", "package.json", "src", "systemd",
+      ]);
       break;
     default:
       throw new Error("unsupported diagnostic tool");

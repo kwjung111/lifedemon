@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2 - 2026-07-20
+
+### Fixed
+
+- Multi-term code diagnostics now rank matches across normalized file paths and nearby source context, preventing a useful implementation match from being discarded because every requested term was not on one line.
+- Added a bounded read-only Git history diagnostic and expanded recent deployment history so the agent can confirm exactly when an observed behavior was introduced instead of inferring solely from current code.
+
 ## 1.5.1 - 2026-07-20
 
 ### Fixed

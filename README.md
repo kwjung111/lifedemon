@@ -59,6 +59,9 @@ investigation. The agent may adaptively inspect an allowlisted Life Daemon
 service or timer, bounded journal logs, SQLite integrity and queue state, server
 resources, deployment state, configuration presence, fixed upstream network
 connectivity, deployed unit definitions, and bounded source-code matches.
+Source investigations rank multi-term matches across nearby context and can
+inspect bounded Git history for the exact revision that introduced a setting or
+behavior, allowing an earlier scheduled run to be correlated with deployed code.
 
 Every investigation uses strict structured actions, at most three adaptive
 rounds and eight tool calls. Tool implementations use fixed command argument

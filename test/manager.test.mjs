@@ -221,6 +221,38 @@ test("searches only the bounded source tree without an external binary", async (
   assert.doesNotMatch(result, /job-profile/);
 });
 
+test("ranks multi-term source searches across paths and nearby identifier context", async () => {
+  const root = join(dataDir, "ranked-search-fixture");
+  mkdirSync(join(root, "src", "apps", "jobs"), { recursive: true });
+  mkdirSync(join(root, "systemd"), { recursive: true });
+  writeFileSync(join(root, "package.json"), "{}");
+  writeFileSync(join(root, "src", "apps", "jobs", "collect.mjs"), [
+    "const completedAt = new Date().toISOString();",
+    "setJobSetting('job_collection_last_attempt_at', completedAt);",
+    "setJobSetting('job_collection_last_success_at', completedAt);",
+  ].join("\n"));
+  writeFileSync(join(root, "src", "telemetry.mjs"), "const telemetry = true;\n");
+  const result = await searchRepositorySource("jobs collection telemetry lastAttemptAt lastSuccessAt", root);
+  assert.match(result.split("\n", 1)[0], /src[\\/]apps[\\/]jobs[\\/]collect\.mjs/);
+  assert.match(result, /setJobSetting\('job_collection_last_success_at'/);
+});
+
+test("uses a fixed git invocation for bounded code history", async () => {
+  let commandArgs;
+  const result = await executeReadOnlyTool({
+    tool: "code_history", unit: null, lines: null, since_minutes: null, domain: null, query: "job_collection_last_success_at",
+  }, {
+    command: async (file, args) => {
+      commandArgs = { file, args };
+      return "bcd95c8 2026-07-20T16:19:13+09:00 feat(ops): add collection health";
+    },
+  });
+  assert.equal(commandArgs.file, "/usr/bin/git");
+  assert.deepEqual(commandArgs.args.slice(-4), ["--", "package.json", "src", "systemd"]);
+  assert.ok(commandArgs.args.includes("-Sjob_collection_last_success_at"));
+  assert.match(result.output, /feat\(ops\)/);
+});
+
 test("builds a private snapshot and parses systemd properties without executing a shell", () => {
   setJobSetting("job_collection_last_success_at", "2026-07-20T00:20:00.000Z");
   const snapshot = buildSystemSnapshot({
