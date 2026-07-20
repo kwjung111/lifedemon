@@ -4,7 +4,7 @@ import {
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { formatReminderTime, kstDateTimeToIso, proposeReminder } from "./service.mjs";
 import { calendarSyncStatus } from "../../integrations/google-calendar.mjs";
-import { looksLikeReminderRequest, parseReminderRequest } from "./ai-parser.mjs";
+import { looksLikeReminderClarification, looksLikeReminderRequest, parseReminderRequest } from "./ai-parser.mjs";
 
 function parseCreate(text) {
   const match = text.match(/^(?:\/remind(?:@\w+)?|알림\s*등록)\s+(20\d{2}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$/i);
@@ -104,9 +104,16 @@ export const reminderBotModule = {
     const strictRequest = parseCreate(text);
     if (strictRequest) {
       clearClarification();
+      let dueAt;
+      try {
+        dueAt = kstDateTimeToIso(strictRequest.date, strictRequest.time);
+      } catch {
+        await sendMessage("📅 존재하지 않는 날짜나 시각이라 알림을 등록하지 않았어요.");
+        return true;
+      }
       await proposeReminder({
         title: strictRequest.title,
-        dueAt: kstDateTimeToIso(strictRequest.date, strictRequest.time),
+        dueAt,
         url: strictRequest.url,
         module: "global",
         entityKey: `manual:${strictRequest.date}:${strictRequest.time}:${strictRequest.title}`,
@@ -114,7 +121,22 @@ export const reminderBotModule = {
       return true;
     }
     const pending = pendingClarification();
-    if (pending && /^\//.test(text)) return false;
+    if (pending && /^(?:취소|그만|됐어)[.!\s]*$/.test(text)) {
+      clearClarification();
+      await sendMessage("알림 등록을 취소했어요.");
+      return true;
+    }
+    if (pending && /^\//.test(text)) {
+      if (!/^\/remind(?:@\w+)?\b/i.test(text)) clearClarification();
+      return false;
+    }
+    if (pending && (
+      message.document || message.photo || message.video || message.voice
+      || !looksLikeReminderClarification(text)
+    )) {
+      clearClarification();
+      return false;
+    }
     if (!pending && !looksLikeReminderRequest(text)) return false;
     const requestText = pending ? `${pending.text}\n추가 답변: ${text}` : text;
 

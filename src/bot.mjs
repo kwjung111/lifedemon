@@ -5,6 +5,7 @@ import {
   failTelegramUpdate,
   getPlatformSetting,
   setPlatformSetting,
+  telegramMessageContext,
 } from "./core/state.mjs";
 import { botModules, syncTelegramMenu } from "./modules.mjs";
 import { chatId, sendMessage, telegram } from "./telegram.mjs";
@@ -22,6 +23,7 @@ const bot = createBotRuntime({
   beginUpdate: beginTelegramUpdate,
   completeUpdate: completeTelegramUpdate,
   failUpdate: failTelegramUpdate,
+  messageContext: telegramMessageContext,
 });
 
 await bot.run();

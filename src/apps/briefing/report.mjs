@@ -8,7 +8,7 @@ import {
   setPlatformSetting,
 } from "../../core/state.mjs";
 import { sendMessage } from "../../telegram.mjs";
-import { listInboxItems } from "../inbox/store.mjs";
+import { listInboxActionItems } from "../inbox/store.mjs";
 
 const escapeHtml = (value) => String(value || "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -78,10 +78,16 @@ export function morningBriefingSnapshot({ now = new Date(), housingLimit = 3, jo
   const previousJobSignature = getPlatformSetting("morning_briefing_jobs_signature", null);
   const housingChanged = previousHousingSignature === null || previousHousingSignature !== housingSignature;
   const jobsChanged = previousJobSignature === null || previousJobSignature !== jobSignature;
+  const reminders = listReminders();
+  const inbox = listInboxActionItems({ now, limit: 8 }).filter((item) => !reminders.some((reminder) => (
+    reminder.status === "approved"
+      && reminder.due_at === item.event_at
+      && String(reminder.title).replace(/\s+/g, "") === String(item.title).replace(/\s+/g, "")
+  ))).slice(0, 3);
   return {
     date: kstDate(now),
-    actions: todayActions({ reminders: listReminders(), appliedHousing: housing.applied, now }),
-    inbox: listInboxItems({ limit: 3 }),
+    actions: todayActions({ reminders, appliedHousing: housing.applied, now }),
+    inbox,
     housing: { ...housing, ...housingChanges, changed: housingChanged, signature: housingSignature },
     jobs: { ...jobs, ...jobChanges, changed: jobsChanged, signature: jobSignature },
     collectionAt: { housing: housingCollection.completedAt, jobs: jobCollection.completedAt },
@@ -90,6 +96,7 @@ export function morningBriefingSnapshot({ now = new Date(), housingLimit = 3, jo
 
 export function formatMorningBriefing(snapshot) {
   const lines = [`☀️ ${snapshot.date} 오늘의 브리핑`];
+  const items = [];
   if (snapshot.actions.length) {
     lines.push("", `🚨 오늘 할 일 ${snapshot.actions.length}개`);
     for (const action of snapshot.actions.slice(0, 12)) {
@@ -97,17 +104,19 @@ export function formatMorningBriefing(snapshot) {
       lines.push(`• ${action.at ? kstDateTime(action.at) : "오늘"} · ${title}`);
     }
     if (snapshot.actions.length > 12) lines.push(`• 외 ${snapshot.actions.length - 12}개 · /reminders에서 확인`);
-  } else lines.push("", "🚨 오늘 확정된 일정 없음");
+  } else lines.push("", "🚨 오늘 울릴 정시 알림 없음");
 
   if (snapshot.inbox?.length) {
     lines.push("", `📥 다음 행동 ${snapshot.inbox.length}개`);
     for (const item of snapshot.inbox) {
+      const index = items.length + 1;
+      items.push({ index, id: item.id, domain: "inbox", title: item.title });
       const at = item.event_at ? ` · ${kstDateTime(item.event_at)}` : "";
-      lines.push(`• ${escapeHtml(item.next_action)} — ${escapeHtml(item.title)}${at}`);
+      const title = item.source_url ? link(item.source_url, item.title) : escapeHtml(item.title);
+      lines.push(`${index}. ${escapeHtml(item.next_action)} — ${title}${at}`);
     }
   }
 
-  const items = [];
   const housingShow = snapshot.housing.changed;
   lines.push("", `🏠 주택 · 추천 후보 ${snapshot.housing.allCandidates.length}건 · 지원 진행 ${snapshot.housing.applied.length}건`);
   lines.push(`신규 ${snapshot.housing.newCount} · 변경 ${snapshot.housing.changedCount} · 수집 오류 ${snapshot.housing.errors}`);
@@ -145,15 +154,16 @@ export function formatMorningBriefing(snapshot) {
 export async function sendMorningBriefing({ now = new Date(), deliveryKey = null } = {}) {
   const snapshot = morningBriefingSnapshot({ now });
   const formatted = formatMorningBriefing(snapshot);
+  const applicationItems = formatted.items.filter((item) => ["housing", "jobs"].includes(item.domain));
   const shownByDomain = {
     housing: formatted.items.filter((item) => item.domain === "housing").length,
     jobs: formatted.items.filter((item) => item.domain === "jobs").length,
   };
   const message = await sendMessage(formatted.text, {
     parse_mode: "HTML",
-    ...(formatted.items.length ? {
+    ...(applicationItems.length ? {
       reply_markup: {
-        inline_keyboard: formatted.items.map((item) => [{
+        inline_keyboard: applicationItems.map((item) => [{
           text: `${item.index}번 ${item.domain === "housing" ? "신청했어" : "지원했어"}`,
           callback_data: `${item.domain === "housing" ? "h" : "j"}:ap:${item.id}`,
         }]),
@@ -196,7 +206,7 @@ export async function sendMoreRecommendations(domain, { offset = 0, limit = 6 } 
 }
 
 export function briefingItem(context, text) {
-  const items = (context?.items || []).map((item) => ({
+  const items = (context?.items || []).filter((item) => ["housing", "jobs"].includes(item.domain)).map((item) => ({
     ...item,
     ...(item.domain === "housing" ? getNotice(item.id) : getJobPosting(item.id)),
   }));

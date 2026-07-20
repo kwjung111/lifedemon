@@ -10,13 +10,16 @@ Life Daemon is a personal automation platform, not a single-purpose housing bot.
 - `src/apps/reminders/`: Global event proposals, approval, listing, and delivery shared by every app.
 - `src/apps/feedback/`: Shared explicit feedback parsing, durable-rule proposals, and approval routing; domain adapters apply approved rules.
 - `src/apps/inbox/`: Format-free life-event, task, note, link, and attachment capture with natural corrections.
+- `src/apps/briefing/`: Bounded cross-domain morning projection and reply delegation.
+- `src/apps/manager/`: Read-only operational questions and persistent Codex conversation.
+- `src/apps/manual/`: Progressive Telegram help and the curated primary command menu.
 - `src/telegram.mjs`: Shared Telegram client. It has no housing or jobs business rules.
 - `src/bot.mjs`: Composition root. It registers enabled app modules with the shared runtime.
 - `data/platform.sqlite`: Shared gateway settings, durable Telegram outbox, feedback state, reminder state, Calendar mappings, and synchronization leases; domain-specific housing and job data stay in app-owned databases.
 
-Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
+Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps namespace Telegram callback data (`h:` housing, `j:` jobs, `r:` reminders, `f:` feedback) so one gateway can safely route them.
 
-The Life Inbox is intentionally the final Telegram routing fallback. Reminder requests, briefing replies, housing/job actions, feedback, and operations questions retain precedence. Clear dates, tasks, notes, links, and attachment metadata use deterministic rules and consume no AI call; only ambiguous free text and complex corrections use the shared bounded Structured Outputs runner. Items, revisions, and classifier call/character telemetry live in app-owned tables in `platform.sqlite`. Confirmation messages contain the conclusion and next action in one message with no buttons. Their outbox context makes ordinary Telegram replies such as “23일 오후 2시로”, “할 일로 바꿔”, “완료”, and “취소해” durable and target-safe. The weekday briefing projects at most three active Inbox next actions into its existing single message.
+The Life Inbox is the final fallback for new content, while a matching Inbox Telegram reply context takes priority over keyword routing. This prevents an Inbox cancellation from becoming a feedback undo and keeps briefing/list replies attached to the correct domain. Explicit reminder wording, housing/job actions, and operational questions retain their own routes. Clear dates, tasks, notes, links, and attachment metadata use deterministic rules and consume no AI call; only ambiguous free text and complex corrections use the shared bounded Structured Outputs runner. Items, revisions, and classifier call/character telemetry live in app-owned tables in `platform.sqlite`. Confirmation messages distinguish Inbox storage from a timed reminder. `/inbox` pages carry stable item contexts, re-open links or Telegram attachments, and accept numbered natural replies. The weekday briefing projects at most three non-stale Inbox next actions into its existing single message.
 
 The briefing app is a read-only cross-domain presentation layer. Weekday housing and job services prepare all source data before 09:00 without sending standalone digests. `morning-briefing.service` then reads the current domain projections and approved reminders, emits one bounded message, and stores a mixed-domain reply context. Only the top three recommendations per domain are displayed; signatures collapse an unchanged domain to `변경 없음`, while the full analyzed set remains in its owning database. A reply target is resolved across the mixed list and delegated to the owning housing or job module, so application and feedback mutations remain domain-owned. Natural `더 보여줘` requests return the next bounded domain page.
 
@@ -54,12 +57,13 @@ MyHome collection is considered complete only when every advertised raw row is r
 
 An app module exposes:
 
-- `id` and `help`
+- `id` and optional `commands`
+- optional `canHandleMessage(message, context)` for reply-context priority
 - `canHandleCallback(query)`
 - `handleCallback(query)`
-- `handleMessage(message)` returning whether it handled the message
+- `handleMessage(message, context)` returning whether it handled the message
 
-Register the module in `src/bot.mjs`. A separate Telegram bot can use the same module with a different composition root and environment file; no collector or classification code needs to be copied.
+Register the module in `src/modules.mjs`. A separate Telegram bot can use the same module with a different composition root and environment file; no collector or classification code needs to be copied.
 
 Daily collectors remain separate systemd one-shot services and timers. They prepare data at 06:30 and 07:40 KST; the independent 09:00 briefing reads the latest completed state, so a slow or failed crawl cannot stop the bot or create multiple scheduled report messages.
 

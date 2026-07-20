@@ -9,6 +9,7 @@ export function createBotRuntime({
   completeUpdate = () => null,
   failUpdate = () => ({ status: "pending", attempts: 1 }),
   allowedUserId = allowedChatId,
+  messageContext = () => null,
   log = console.log,
 }) {
   const allowedChat = String(allowedChatId);
@@ -48,14 +49,11 @@ export function createBotRuntime({
       itemNumber: Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0) || null,
     };
 
-    if (/^\/help(?:@\w+)?$/i.test(text)) {
-      const help = modules.map((module) => module.help).filter(Boolean).join("\n\n");
-      await sendMessage(`사용 가능한 알림\n\n${help}`);
-      return;
-    }
-
-    for (const module of modules) {
-      if (await module.handleMessage(message)) {
+    const context = routeMeta.replyToMessageId ? messageContext(routeMeta.replyToMessageId) : null;
+    const priority = modules.filter((module) => module.canHandleMessage?.(message, context));
+    const orderedModules = [...priority, ...modules.filter((module) => !priority.includes(module))];
+    for (const module of orderedModules) {
+      if (await module.handleMessage(message, context)) {
         log("Telegram message routed", { ...routeMeta, module: module.id });
         return;
       }
@@ -69,7 +67,7 @@ export function createBotRuntime({
       await sendMessage("답장한 메시지가 저장된 공고 브리핑과 연결되지 않았습니다. 번호가 붙은 공고 목록 말풍선 자체에 답장해 주세요.");
       return;
     }
-    await sendMessage("어떤 알림에 대한 요청인지 확인하지 못했습니다. /help를 보내 사용법을 확인해 주세요.");
+    await sendMessage("요청을 이해하지 못했어요. /help에서 가장 쉬운 사용법을 확인해 주세요.");
   }
 
   async function handleUpdate(update) {

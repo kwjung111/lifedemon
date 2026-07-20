@@ -77,6 +77,7 @@ test("recognizes explicit and natural manager questions without claiming unrelat
   assert.equal(looksLikeManagerQuestion("/job 에서 현재 내 채용공고 우선순위가 어떻게 되지?"), true);
   assert.equal(looksLikeManagerQuestion("그거 왜 실패했지?"), true);
   assert.equal(looksLikeManagerQuestion("오늘 점심 뭐 먹지?"), false);
+  assert.equal(looksLikeManagerQuestion("봇 오류 확인해야"), false);
 });
 
 test("answers common priority and collection questions deterministically", () => {

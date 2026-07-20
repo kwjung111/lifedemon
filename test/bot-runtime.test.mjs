@@ -83,3 +83,26 @@ test("does not commit a failed update before processing succeeds", async () => {
   await bot.handleUpdate(update);
   assert.deepEqual(transitions.at(-1), ["done", 99]);
 });
+
+test("routes reply context before broad keyword handlers", async () => {
+  const routed = [];
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [
+      { id: "feedback", handleMessage: async () => { routed.push("feedback"); return true; } },
+      {
+        id: "inbox",
+        canHandleMessage: (_message, context) => context?.domain === "inbox",
+        handleMessage: async () => { routed.push("inbox"); return true; },
+      },
+    ],
+    messageContext: () => ({ domain: "inbox", entityId: 7 }),
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({
+    message_id: 21, chat: { id: 1, type: "private" }, from: { id: 1 }, text: "방금 거 취소",
+    reply_to_message: { message_id: 20 },
+  });
+  assert.deepEqual(routed, ["inbox"]);
+});

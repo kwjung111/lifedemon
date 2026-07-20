@@ -2,9 +2,25 @@ import { createReminder } from "../../core/state.mjs";
 import { sendMessage } from "../../telegram.mjs";
 
 export function kstDateTimeToIso(date, time) {
-  const parsed = new Date(`${date}T${time}:00+09:00`);
+  const timeMatch = String(time).match(/^(\d{1,2}):([0-5]\d)$/);
+  const hour = Number(timeMatch?.[1]);
+  if (!isValidCalendarDate(date) || !timeMatch || hour > 23) {
+    throw new Error("올바르지 않은 알림 시각입니다.");
+  }
+  const normalizedTime = `${String(hour).padStart(2, "0")}:${timeMatch[2]}`;
+  const parsed = new Date(`${date}T${normalizedTime}:00+09:00`);
   if (Number.isNaN(parsed.getTime())) throw new Error("올바르지 않은 알림 시각입니다.");
   return parsed.toISOString();
+}
+
+export function isValidCalendarDate(date) {
+  const match = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 export function formatReminderTime(dueAt) {

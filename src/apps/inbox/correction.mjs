@@ -42,7 +42,10 @@ export function correctInboxByRules(text) {
   const nextAction = input.match(/(?:다음\s*(?:행동|할\s*일)|할\s*일)(?:은|을)?\s*[:：]?\s*(.+?)(?:\s*(?:으로|로)\s*(?:바꿔|수정)|$)/)?.[1];
   if (nextAction) changes.nextAction = clean(nextAction);
   const eventAt = parseInboxDateTime(input);
-  if (eventAt) changes.eventAt = eventAt;
+  if (eventAt) {
+    changes.eventAt = eventAt;
+    changes.assumptions = [];
+  }
   if (Object.keys(changes).length) return { action: "update", changes, reason: input, classifier: "rules" };
   return null;
 }
@@ -69,11 +72,11 @@ function normalize(result) {
   if (result.title) changes.title = clean(result.title, 300);
   if (result.kind) changes.kind = result.kind;
   if (result.clear_event_at) changes.eventAt = null;
-  else if (result.event_at && Number.isFinite(Date.parse(result.event_at))) {
+  else if (result.event_at && /(?:Z|[+-]\d{2}:\d{2})$/i.test(result.event_at) && Number.isFinite(Date.parse(result.event_at))) {
     changes.eventAt = new Date(result.event_at).toISOString();
   }
   if (result.next_action) changes.nextAction = clean(result.next_action);
-  if (Array.isArray(result.assumptions) && result.assumptions.length) {
+  if (result.action === "update" && Array.isArray(result.assumptions)) {
     changes.assumptions = result.assumptions.map((value) => clean(value, 200)).filter(Boolean).slice(0, 6);
   }
   return {
@@ -89,6 +92,9 @@ export async function interpretInboxReply(text, item, {
   if (rules) {
     recordInboxClassifierUsage({ classifier: "rules", input: text });
     return rules;
+  }
+  if (String(env.INBOX_AI_ENABLED || "true").toLowerCase() === "false") {
+    return { action: "no_change", changes: {}, sentiment: null, reason: "AI disabled", classifier: "rules" };
   }
   const prompt = promptFor(item, text);
   const raw = await modelRunner({

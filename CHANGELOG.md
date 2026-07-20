@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.14.0 - 2026-07-20
+
+### Added
+
+- Added a one-screen Telegram manual, a separate detailed command view, and a Korean user guide.
+- Added replyable/paged Inbox lists, numbered completion/correction/cancellation, stored-link access, and Telegram attachment re-sending.
+- Added realistic UX regression coverage for reply-context priority, paging, stale actions, invalid dates, and the seven-command menu.
+
+### Changed
+
+- Reduced the visible Telegram command menu from fourteen entries to seven common actions while keeping advanced commands available.
+- Reply context now takes precedence over broad reminder, feedback, briefing, and manager keyword routes.
+- Inbox events explicitly state that timed reminders are not registered; users may request one from the confirmation reply.
+- Morning briefings rank non-stale Inbox actions and retain Inbox reply targets without adding buttons.
+
+### Fixed
+
+- Rejected impossible calendar dates instead of allowing JavaScript date rollover.
+- Prevented unfinished reminder clarification from consuming unrelated messages or attachments.
+- Prevented old events and far-future events from permanently hiding recent undated tasks.
+
 ## 1.13.0 - 2026-07-20
 
 ### Added

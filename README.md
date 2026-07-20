@@ -66,12 +66,14 @@ at most the top three housing and top three job recommendations. A domain whose
 top recommendations did not change is reduced to `변경 없음`. Reply with normal
 language such as `4번 지원했어`; the mixed-domain context routes the number to
 the correct tracker. `주택 더 보여줘` or `채용 더 보여줘` returns only the next
-recommendations in one additional message. `/housing` and `/jobs` remain
-available for their existing detailed views.
+recommendations in one additional message. `/housing_status` remains the housing
+application-status view, while `/jobs` retains the detailed job recommendation view.
 
 ## Life Inbox
 
-Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. Clear inputs are classified locally; only ambiguous free text uses Codex. The bot responds once with what it saved, the smallest assumptions it made, and the next action. Reply to that confirmation in ordinary Korean to correct, complete, or cancel the item. `/inbox` shows the current bounded list, and at most three active next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. Clear inputs are classified locally; only ambiguous free text uses Codex. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+
+The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md) and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
 
 Classifier telemetry records rule/AI call counts and bounded input/output character counts in `platform.sqlite`; it does not store or claim exact provider token usage. Set `INBOX_AI_ENABLED=false` to keep every otherwise ambiguous statement as a reversible note without an AI call.
 
@@ -224,6 +226,13 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 운영 환경에서는 `systemd/`의 서비스와 타이머 예시를 환경에 맞게 수정해서 사용합니다.
 
 ## Structure
+
+- `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
+- `src/apps/briefing/`: The bounded weekday cross-domain briefing and reply delegation
+- `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
+- `src/apps/manager/`: Read-only operational questions and Codex conversation
+- `src/apps/manual/`: One-screen Telegram manual and detailed command guide
+- `src/modules.mjs`: Enabled modules and the curated seven-command Telegram menu
 
 - `src/core/`: Telegram 라우팅과 플랫폼 상태
 - `src/apps/housing/`: 주거 도메인 명령과 공식 링크 탐색

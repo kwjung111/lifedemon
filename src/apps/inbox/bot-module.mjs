@@ -1,14 +1,19 @@
 import { recordFeedbackEvent, telegramMessageContext } from "../../core/state.mjs";
-import { sendMessage } from "../../telegram.mjs";
-import { classifyInboxMessage } from "./classifier.mjs";
+import { sendMessage, telegram } from "../../telegram.mjs";
+import { classifyInboxMessage, hasInvalidExplicitDate } from "./classifier.mjs";
 import { interpretInboxReply } from "./correction.mjs";
+import { proposeReminder } from "../reminders/service.mjs";
 import {
-  createInboxItem, getInboxItem, latestInboxItem, listInboxItems, updateInboxItem,
+  countInboxItems, createInboxItem, getInboxItem, inboxItemForSourceMessage,
+  inboxRevisionForSource, latestInboxItem, listInboxItems, updateInboxItem,
 } from "./store.mjs";
 
 const kindLabels = {
-  event: "일정으로", task: "할 일로", watch: "확인할 것으로", note: "메모로", reference: "참고자료로",
+  event: "일정", task: "할 일", watch: "확인할 것", note: "메모", reference: "참고자료",
 };
+const pageSize = 8;
+const escapeHtml = (value) => String(value || "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 function kstDateTime(value) {
   if (!value) return null;
@@ -19,24 +24,59 @@ function kstDateTime(value) {
 }
 
 function itemMessage(item, lead = "저장했어요") {
-  const lines = [`✅ ${kindLabels[item.kind] || "항목으로"} ${lead}.`, item.title];
-  if (item.event_at) lines.push(`시점: ${kstDateTime(item.event_at)}`);
-  lines.push(`다음 행동: ${item.next_action}`);
+  const lines = [`✅ ${kindLabels[item.kind] || "항목"} ${lead.replace(/했어요$/, "")}`];
+  lines.push(item.event_at ? `${kstDateTime(item.event_at)} · ${item.title}` : item.title);
+  if (item.kind === "event") lines.push("정시 알림은 등록되지 않았어요. 알림이 필요하면 ‘알림도 등록해’라고 답장하세요.");
+  else if (item.next_action.replace(/\s+/g, "") !== item.title.replace(/\s+/g, "")) lines.push(`다음: ${item.next_action}`);
   if (item.source_url) lines.push(item.source_url);
-  if (item.assumptions?.length) lines.push(`가정: ${item.assumptions.slice(0, 2).join(" · ")}`);
-  lines.push("바꾸거나 취소하려면 이 메시지에 평소 말투로 답장해 주세요.");
+  if (item.assumptions?.length) lines.push(`확인 안 된 점: ${item.assumptions.slice(0, 2).join(" · ")}`);
+  lines.push("↩️ 이 말풍선의 답장 기능으로 수정·완료·취소");
   return lines.join("\n");
 }
 
-function listMessage(items) {
+function listMessage(items, { offset = 0, total = items.length } = {}) {
   if (!items.length) return "📥 저장된 생활 항목이 없어요.";
-  const lines = [`📥 지금 챙길 것 ${items.length}개`];
+  const lines = [`📥 지금 챙길 것 ${offset + 1}–${offset + items.length} / ${total}`];
   for (const [index, item] of items.entries()) {
     const at = item.event_at ? ` · ${kstDateTime(item.event_at)}` : "";
-    lines.push(`${index + 1}. ${item.title}${at}\n   다음: ${item.next_action}`);
+    const past = item.event_at && Date.parse(item.event_at) < Date.now() ? "지난 일정 · " : "";
+    const title = item.source_url
+      ? `<a href="${escapeHtml(item.source_url)}">${escapeHtml(item.title)}</a>`
+      : escapeHtml(item.title);
+    const attachment = item.attachment ? " · 첨부" : "";
+    lines.push(`${index + 1}. ${past}${title}${escapeHtml(at)}${attachment}\n   다음: ${escapeHtml(item.next_action)}`);
   }
-  if (items.length >= 8) lines.push("나머지는 필요할 때 다시 보여드릴게요.");
+  lines.push("", "↩️ 이 목록에 답장: ‘2번 완료’ · ‘1번 23일로 변경’ · ‘2번 보여줘’");
+  if (offset + items.length < total) lines.push("다음 목록: ‘더 보여줘’라고 답장");
   return lines.join("\n");
+}
+
+function contextItems(context) {
+  return (context?.items || []).filter((item) => item.domain === "inbox");
+}
+
+function targetFromContext(context, text) {
+  if (context?.domain === "inbox" && context.entityId) return getInboxItem(context.entityId);
+  const items = contextItems(context);
+  const number = Number(String(text).match(/(?:^|\s)(\d{1,2})\s*번?/)?.[1] || 0);
+  const numbered = items.find((item) => Number(item.index) === number);
+  if (numbered) return getInboxItem(numbered.id);
+  const compact = String(text).replace(/\s+/g, "");
+  const named = items.filter((item) => {
+    const title = String(item.title || "").replace(/\s+/g, "");
+    return title.length >= 3 && compact.includes(title.slice(0, Math.min(12, title.length)));
+  });
+  if (named.length === 1) return getInboxItem(named[0].id);
+  if (items.length === 1 && /^(?:완료|취소|삭제|보여줘|열어줘)/.test(String(text).trim())) return getInboxItem(items[0].id);
+  return null;
+}
+
+function correctionText(text) {
+  return String(text).replace(/^\s*\d{1,2}\s*번(?:을|은|이|을)?\s*/, "").trim();
+}
+
+function isShowRequest(text) {
+  return /(?:보여\s*줘|열어\s*줘|링크|파일|첨부)/.test(String(text));
 }
 
 function hasContent(message) {
@@ -47,8 +87,11 @@ function hasContent(message) {
 }
 
 function latestReferenceRequest(text) {
-  return /(?:방금|아까|최근|저장한\s*(?:거|것|항목))/.test(text)
-    || /^(?:취소|삭제|완료|했어|끝냈어)/.test(text);
+  return /(?:방금|아까|최근|저장한\s*(?:거|것|항목))/.test(text);
+}
+
+function standaloneAction(text) {
+  return /^(?:취소|삭제|완료|했어|끝냈어|처리했어)[.!\s]*$/.test(String(text).trim());
 }
 
 export function createInboxBotModule({
@@ -56,30 +99,98 @@ export function createInboxBotModule({
   contextForMessage = telegramMessageContext,
   classify = classifyInboxMessage,
   interpretReply = interpretInboxReply,
+  telegramApi = telegram,
+  propose = proposeReminder,
 } = {}) {
+  async function sendListPage(seenIds = []) {
+    const total = countInboxItems();
+    const seen = new Set((seenIds || []).map(Number));
+    const items = listInboxItems({ limit: 100 }).filter((item) => !seen.has(item.id)).slice(0, pageSize);
+    if (!items.length && seen.size) return send("📥 더 보여드릴 활성 항목이 없어요.");
+    const nextSeenIds = [...seen, ...items.map((item) => item.id)];
+    return send(listMessage(items, { offset: seen.size, total }), { parse_mode: "HTML" }, {
+      context: {
+        domain: "inbox", kind: "list", offset: seen.size, total, seenIds: nextSeenIds,
+        items: items.map((item, index) => ({ index: index + 1, id: item.id, domain: "inbox", title: item.title })),
+      },
+    });
+  }
+
   return {
     id: "inbox",
     help: "📥 Life Inbox\n아무 형식 없이 일정·할 일·링크·메모·사진·문서를 보내면 저장합니다. 수정과 취소는 저장 확인 메시지에 평소 말투로 답장하세요.\n/inbox : 지금 챙길 항목",
-    commands: [{ command: "inbox", description: "📥 지금 챙길 생활 항목" }],
+    commands: [{ command: "inbox", description: "📥 저장한 일정·할 일" }],
 
-    async handleMessage(message) {
+    canHandleMessage(message, context) {
+      if (context?.domain === "inbox") return true;
+      const text = message.text || message.caption || "";
+      return Boolean(targetFromContext(context, text))
+        || (contextItems(context).length > 0 && /(?:완료|취소|삭제|변경|바꿔)/.test(text));
+    },
+
+    async handleMessage(message, routedContext = null) {
       if (!hasContent(message)) return false;
       const text = String(message.text || message.caption || "").trim();
       if (/^\/inbox(?:@\w+)?$/i.test(text) || /^(?:내가\s*)?저장한\s*(?:거|것|항목)\s*(?:보여\s*줘|목록)?[.!\s]*$/.test(text)) {
-        await send(listMessage(listInboxItems({ limit: 8 })));
+        await sendListPage([]);
         return true;
       }
       if (/^\//.test(text)) return false;
 
       const replyMessageId = message.reply_to_message?.message_id;
-      const replyContext = replyMessageId ? contextForMessage(replyMessageId) : null;
-      let target = replyContext?.domain === "inbox" && replyContext.entityId
-        ? getInboxItem(replyContext.entityId)
-        : null;
-      if (!target && latestReferenceRequest(text)) target = latestInboxItem();
+      const replyContext = routedContext || (replyMessageId ? contextForMessage(replyMessageId) : null);
+      if (replyContext?.domain === "inbox" && replyContext.kind === "list" && /(?:더\s*보여\s*줘|다음)/.test(text)) {
+        await sendListPage(replyContext.seenIds || contextItems(replyContext).map((item) => item.id));
+        return true;
+      }
+      let target = targetFromContext(replyContext, text);
+      if (!target && latestReferenceRequest(text)) target = latestInboxItem({ activeOnly: true });
+      if (!target && standaloneAction(text)) {
+        if (countInboxItems() === 1) target = latestInboxItem({ activeOnly: true });
+        else {
+          await send("어느 항목인지 선택해야 해요. /inbox 목록에 ‘2번 완료’처럼 답장해 주세요.");
+          return true;
+        }
+      }
 
       if (target) {
-        const correction = await interpretReply(text, target);
+        if (inboxRevisionForSource(target.id, message.message_id)) {
+          await send(itemMessage(getInboxItem(target.id), "이미 반영했어요"));
+          return true;
+        }
+        if (isShowRequest(text)) {
+          if (target.source_url) await send(`🔗 ${target.title}\n${target.source_url}`);
+          else if (target.attachment?.fileId) {
+            const methods = { document: ["sendDocument", "document"], photo: ["sendPhoto", "photo"], video: ["sendVideo", "video"], voice: ["sendVoice", "voice"] };
+            const [method, field] = methods[target.attachment.type] || [];
+            if (method) await telegramApi(method, {
+              chat_id: message.chat.id, [field]: target.attachment.fileId, caption: target.title.slice(0, 900),
+            });
+          } else await send(itemMessage(target, "상세 내용이에요"));
+          return true;
+        }
+        if (target.kind === "event" && /(?:알림.*등록|알려\s*줘|리마인드)/.test(text)) {
+          if (!target.event_at) {
+            await send("알림 날짜와 시간이 아직 없어요. 먼저 ‘23일 오후 2시로 바꿔’처럼 답장해 주세요.");
+            return true;
+          }
+          if (Date.parse(target.event_at) <= Date.now()) {
+            await send("지난 일정에는 새 알림을 등록할 수 없어요. 날짜를 먼저 고쳐 주세요.");
+            return true;
+          }
+          await propose({
+            title: target.title, dueAt: target.event_at, url: target.source_url,
+            module: "global", entityKey: `inbox:${target.id}:${target.event_at}`,
+            metadata: { domain: "inbox", entityId: target.id, source: "life-inbox" },
+          });
+          return true;
+        }
+        const naturalCorrection = correctionText(text);
+        if (hasInvalidExplicitDate(naturalCorrection)) {
+          await send("📅 존재하지 않는 날짜라 변경하지 않았어요. 날짜를 확인해 주세요.");
+          return true;
+        }
+        const correction = await interpretReply(naturalCorrection, target);
         if (correction.action === "cancel") {
           const updated = updateInboxItem(target.id, { status: "cancelled" }, {
             reason: correction.reason, sourceMessageId: message.message_id,
@@ -107,7 +218,7 @@ export function createInboxBotModule({
           recordFeedbackEvent({
             domain: "inbox", entityId: target.id,
             signal: correction.sentiment || "mixed", rawText: text,
-            subjectType: "inbox_kind", subjectValue: target.kind,
+            subjectType: "inbox_item", subjectValue: target.title,
             metadata: { kind: target.kind, classifier: correction.classifier },
             sourceKey: message.message_id ? `telegram:${message.message_id}` : null,
           });
@@ -117,7 +228,19 @@ export function createInboxBotModule({
         await send("이 항목을 어떻게 바꿀지 이해하지 못했어요. 예: ‘23일 오후 2시로 바꿔’ 또는 ‘취소해’. ");
         return true;
       }
+      if (replyContext?.domain === "inbox" || contextItems(replyContext).length) {
+        await send("어느 항목인지 번호를 붙여 주세요. 예: ‘2번 완료’. ");
+        return true;
+      }
       if (replyMessageId) return false;
+
+      const replayed = inboxItemForSourceMessage(message.message_id);
+      if (replayed) {
+        await send(itemMessage(replayed, "이미 저장했어요"), {}, {
+          context: { domain: "inbox", kind: "item", entityId: replayed.id },
+        });
+        return true;
+      }
 
       let result;
       try {
@@ -128,6 +251,10 @@ export function createInboxBotModule({
         return true;
       }
       if (result.intent === "not_inbox") return false;
+      if (result.intent === "invalid_date") {
+        await send("📅 존재하지 않는 날짜라 저장하지 않았어요. 날짜를 확인해 다시 보내 주세요.");
+        return true;
+      }
       const item = createInboxItem({
         kind: result.kind, title: result.title, sourceText: text,
         sourceUrl: result.url, eventAt: result.eventAt, nextAction: result.nextAction,

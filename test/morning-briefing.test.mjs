@@ -49,6 +49,7 @@ const {
   formatMorningBriefing, morningBriefingSnapshot, sendMorningBriefing, sendMoreRecommendations,
 } = await import("../src/apps/briefing/report.mjs");
 const { briefingBotModule } = await import("../src/apps/briefing/bot-module.mjs");
+const { createInboxItem } = await import("../src/apps/inbox/store.mjs");
 
 function housingFixture(index) {
   return {
@@ -138,4 +139,35 @@ test("shows only the remaining housing recommendations on request", async () => 
   assert.match(payload.text, /주택 추가 추천/);
   assert.equal(context.items.length, 1);
   assert.equal(context.items[0].domain, "housing");
+});
+
+test("keeps Inbox actions replyable without adding action buttons", async () => {
+  const inbox = createInboxItem({
+    kind: "task", title: "보험 갱신", nextAction: "보험사 전화",
+    classifier: "rules", sourceMessageId: 9901,
+  });
+  setPlatformSetting("morning_briefing_housing_signature", "");
+  setPlatformSetting("morning_briefing_jobs_signature", "");
+  const delivered = await sendMorningBriefing({ now: new Date("2026-07-21T00:00:00.000Z") });
+  const row = platformDb.prepare("SELECT payload_json, context_json FROM telegram_outbox WHERE message_id=?").get(delivered.message_id);
+  const payload = JSON.parse(row.payload_json);
+  const context = JSON.parse(row.context_json);
+  const inboxContext = context.items.find((item) => item.domain === "inbox");
+  assert.equal(inboxContext.id, inbox.id);
+  assert.match(payload.text, /보험사 전화/);
+  assert.equal(payload.reply_markup.inline_keyboard.some((buttons) => buttons[0].callback_data.includes(`:${inbox.id}`)), false);
+});
+
+test("does not repeat an Inbox event that already has the same approved reminder", () => {
+  const inbox = createInboxItem({
+    kind: "event", title: "중복 방지 일정", nextAction: "참석",
+    eventAt: "2026-07-21T06:00:00.000Z", classifier: "rules", sourceMessageId: 9902,
+  });
+  const reminder = createReminder({
+    title: inbox.title, dueAt: inbox.event_at, module: "global", entityKey: `inbox:${inbox.id}`,
+  });
+  setReminderStatus(reminder.id, "approved");
+  const snapshot = morningBriefingSnapshot({ now: new Date("2026-07-21T00:00:00.000Z") });
+  assert.equal(snapshot.actions.some((item) => item.title === inbox.title), true);
+  assert.equal(snapshot.inbox.some((item) => item.id === inbox.id), false);
 });

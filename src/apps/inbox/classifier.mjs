@@ -1,6 +1,6 @@
 import { runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 import { activePreferenceFeedbackEvents } from "../../core/state.mjs";
-import { kstDateTimeToIso } from "../reminders/service.mjs";
+import { isValidCalendarDate, kstDateTimeToIso } from "../reminders/service.mjs";
 import { recordInboxClassifierUsage } from "./store.mjs";
 
 const kinds = new Set(["event", "task", "watch", "note", "reference"]);
@@ -27,6 +27,19 @@ function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function nowKstText(now = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).format(now);
+}
+
+function hasRelativeDateTime(text) {
+  const value = String(text || "");
+  return /(?:오늘|내일|모레|이번\s*주|다음\s*주|월요일|화요일|수요일|목요일|금요일|토요일|일요일)/.test(value)
+    && /(?:오전|오후|\d{1,2}\s*시|\d{1,2}:\d{2})/.test(value);
+}
+
 function attachmentFromMessage(message) {
   if (message.document) return {
     type: "document", fileId: message.document.file_id, fileName: message.document.file_name || null,
@@ -51,7 +64,15 @@ export function parseInboxDateTime(text) {
   if (marker === "오전" && hour === 12) hour = 0;
   if (hour > 23 || minute > 59) return null;
   const day = `${date[1]}-${String(date[2]).padStart(2, "0")}-${String(date[3]).padStart(2, "0")}`;
+  if (!isValidCalendarDate(day)) return null;
   return kstDateTimeToIso(day, `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+}
+
+export function hasInvalidExplicitDate(text) {
+  const date = String(text || "").match(datePattern);
+  if (!date || !String(text || "").match(timePattern)) return false;
+  const day = `${date[1]}-${String(date[2]).padStart(2, "0")}-${String(date[3]).padStart(2, "0")}`;
+  return !isValidCalendarDate(day);
 }
 
 export function classifyInboxByRules(message) {
@@ -59,7 +80,12 @@ export function classifyInboxByRules(message) {
   const attachment = attachmentFromMessage(message);
   const url = text.match(urlPattern)?.[0] || null;
   const eventAt = parseInboxDateTime(text);
-  const title = text.replace(urlPattern, "").trim();
+  const title = text.replace(urlPattern, "").replace(datePattern, "").replace(timePattern, "").replace(/^[\s·,.-]+|[\s·,.-]+$/g, "").trim();
+
+  if (hasInvalidExplicitDate(text)) return {
+    intent: "invalid_date", classifier: "rules",
+    reason: "존재하지 않는 날짜라 저장하지 않음",
+  };
 
   if (attachment && !text) return {
     intent: "save", kind: "reference",
@@ -83,6 +109,7 @@ export function classifyInboxByRules(message) {
     intent: "save", kind: "watch", title: title || new URL(url).hostname,
     eventAt: null, nextAction: "링크 내용 확인", url, assumptions: title ? [] : ["설명 없는 링크라 확인 대상으로 저장"], attachment, classifier: "rules",
   };
+  if (/[?？]\s*$/.test(text)) return { intent: "not_inbox", classifier: "rules" };
   return null;
 }
 
@@ -94,11 +121,12 @@ function classificationPrompt(message, attachment) {
   } : null;
   const preferences = activePreferenceFeedbackEvents("inbox").slice(0, 12).map((event) => ({
     signal: event.signal,
-    kind: event.subject_value || null,
+    similar_item: event.subject_value || null,
     note: String(event.raw_text || "").slice(0, 200),
   }));
   return `You classify one Korean message for a private Life Inbox. Return exactly one JSON object.
 
+CURRENT_TIME_KST: ${nowKstText()}
 USER_MESSAGE: ${JSON.stringify(text)}
 ATTACHMENT: ${JSON.stringify(publicAttachment)}
 RECENT_SOFT_FEEDBACK: ${JSON.stringify(preferences)}
@@ -110,19 +138,21 @@ Use intent=save only when the user is dropping an event, task, thing to watch, n
 kind meanings: event=scheduled occurrence, task=action to perform, watch=thing/link to monitor, note=memory, reference=file/link to retain. title and next_action must be concise Korean. event_at must be an ISO-8601 instant only when an exact date and time are stated; otherwise null. url must come verbatim from USER_MESSAGE or be null.`;
 }
 
-function normalizeAiResult(result, attachment) {
+function normalizeAiResult(result, attachment, originalText) {
   if (!result || !["save", "not_inbox"].includes(result.intent)) throw new Error("invalid inbox classification");
   if (result.intent === "not_inbox") return { intent: "not_inbox", classifier: "ai" };
-  const eventAt = result.event_at && Number.isFinite(Date.parse(result.event_at))
-    ? new Date(result.event_at).toISOString()
-    : null;
+  const exactEventAt = parseInboxDateTime(originalText);
+  const modelEventAt = result.event_at && /(?:Z|[+-]\d{2}:\d{2})$/i.test(result.event_at)
+    && Number.isFinite(Date.parse(result.event_at)) ? new Date(result.event_at).toISOString() : null;
+  const eventAt = exactEventAt || (hasRelativeDateTime(originalText) ? modelEventAt : null);
+  const groundedUrl = result.url && String(originalText).includes(String(result.url)) ? result.url : null;
   return {
     intent: "save",
     kind: kinds.has(result.kind) ? result.kind : "note",
     title: normalizeText(result.title).slice(0, 300) || "메모",
     eventAt,
     nextAction: normalizeText(result.next_action).slice(0, 500) || "내용 확인",
-    url: result.url || null,
+    url: groundedUrl,
     assumptions: Array.isArray(result.assumptions) ? result.assumptions.map(normalizeText).filter(Boolean).slice(0, 6) : [],
     attachment,
     classifier: "ai",
@@ -151,7 +181,7 @@ export async function classifyInboxMessage(message, { modelRunner = runCodexStru
     prompt, schema: inboxClassificationSchema, env, timeoutMs: 60_000,
     search: false, taskName: "life inbox classification",
   });
-  const result = normalizeAiResult(raw, attachment);
+  const result = normalizeAiResult(raw, attachment, input);
   recordInboxClassifierUsage({ classifier: "ai", input: prompt, output: JSON.stringify(raw) });
   return result;
 }

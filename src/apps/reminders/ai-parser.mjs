@@ -39,8 +39,20 @@ export async function runReminderModel(prompt, {
 export function looksLikeReminderRequest(text) {
   const value = String(text || "").trim();
   if (!value || (/^\//.test(value) && !/^\/remind(?:@\w+)?\b/i.test(value))) return false;
-  return /(?:알림|알려|리마인드|기억|잊지|챙겨|remind)/i.test(value)
+  return /(?:알림|알려|리마인드|remind)/i.test(value)
     || /^\/remind(?:@\w+)?\b/i.test(value);
+}
+
+export function looksLikeReminderClarification(text) {
+  const value = String(text || "").trim();
+  if (!value || /^(?:취소|그만|됐어)[.!\s]*$/.test(value)) return false;
+  const hasTime = /(?:오늘|내일|모레|이번\s*주|다음\s*주|월요일|화요일|수요일|목요일|금요일|토요일|일요일|오전|오후|\d{1,2}\s*시|\d{1,2}:\d{2}|20\d{2}[.\-/년])/.test(value);
+  if (!hasTime) return false;
+  const remainder = value
+    .replace(/20\d{2}[.\-/년]\s*\d{1,2}[.\-/월]\s*\d{1,2}일?/g, "")
+    .replace(/오늘|내일|모레|이번\s*주|다음\s*주|월요일|화요일|수요일|목요일|금요일|토요일|일요일|오전|오후|\d{1,2}:\d{2}|\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?/g, "")
+    .replace(/[\s에야입니다.]/g, "");
+  return remainder.length <= 2;
 }
 
 function promptFor(text, now) {

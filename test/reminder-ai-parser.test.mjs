@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   looksLikeReminderRequest,
+  looksLikeReminderClarification,
   parseReminderRequest,
   runReminderModel,
 } from "../src/apps/reminders/ai-parser.mjs";
@@ -66,6 +67,10 @@ test("only routes likely reminder intent to the AI parser", () => {
   assert.equal(looksLikeReminderRequest("/remind 다음 주 월요일 아침에 회의"), true);
   assert.equal(looksLikeReminderRequest("/housing"), false);
   assert.equal(looksLikeReminderRequest("오늘 주택 공고 뭐 있어?"), false);
+  assert.equal(looksLikeReminderRequest("보험 갱신 챙겨"), false);
+  assert.equal(looksLikeReminderRequest("여권 사본 위치 기억해줘"), false);
+  assert.equal(looksLikeReminderClarification("내일 오후 4시"), true);
+  assert.equal(looksLikeReminderClarification("새 문서 저장해줘"), false);
 });
 
 test("normalizes an AI-parsed reminder", async () => {
