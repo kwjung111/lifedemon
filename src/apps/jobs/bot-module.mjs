@@ -8,13 +8,10 @@ import { recordFeedbackEvent, telegramMessageContext } from "../../core/state.mj
 import {
   ruleProposalKeyboard,
   ruleProposalMessage,
-  parseEntityFeedback,
   saveInterpretedFeedback,
 } from "../feedback/service.mjs";
-import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
+import { formatUndoResult, undoLatestFeedback } from "../feedback/undo.mjs";
 import { proposeJobApplicationFollowup } from "./application-followup.mjs";
-import { feedbackTargetQuestion, resolveFeedbackTarget } from "../feedback/reference.mjs";
-import { feedbackAiEnabled, interpretFeedback } from "../feedback/ai-parser.mjs";
 
 
 async function sendApplicationConfirmation(job) {
@@ -23,10 +20,7 @@ async function sendApplicationConfirmation(job) {
   if (!reminder) await sendMessage(`${intro}\n\n/job_status : 지원 현황 확인`);
 }
 
-export function createJobsBotModule({
-  interpret = interpretFeedback,
-  aiEnabled = feedbackAiEnabled,
-} = {}) {
+export function createJobsBotModule() {
   return {
   id: "jobs",
   help: "💼 채용 공고\n/jobs : 현재 채용 공고와 AI 판정 보기\n/job_status : 지원 진행 중인 채용공고 보기\n‘지원했어’는 지원 추적, ‘관심없어’는 추천에서만 제외",
@@ -34,6 +28,12 @@ export function createJobsBotModule({
     { command: "jobs", description: "💼 최신 채용 공고와 AI 판정" },
     { command: "job_status", description: "💼 지원 중인 채용 공고" },
   ],
+
+  canHandleMessage(_message, context) {
+    const semantic = context?.semantic;
+    return semantic?.route === "job_status"
+      || (["feedback", "feedback_undo"].includes(semantic?.route) && semantic?.domain === "jobs");
+  },
 
   canHandleCallback(query) {
     return /^j:(?:ap|ig):/.test(String(query.data || ""));
@@ -75,27 +75,30 @@ export function createJobsBotModule({
     }
   },
 
-  async handleMessage(message) {
+  async handleMessage(message, routedContext = null) {
     const text = String(message.text || "").trim();
     if (/^\/jobs(?:@\w+)?$/i.test(text)) {
       await sendJobReport();
       return true;
     }
-    if (/^\/(?:job|jobs)_status(?:@\w+)?$/i.test(text) || /^채용\s*(?:지원)?\s*현황$/i.test(text)) {
+    if (/^\/(?:job|jobs)_status(?:@\w+)?$/i.test(text) || routedContext?.semantic?.route === "job_status") {
       await sendJobApplicationStatus();
       return true;
     }
     const replyMessageId = message.reply_to_message?.message_id;
     if (!replyMessageId) return false;
-    const deliveryContext = telegramMessageContext(replyMessageId);
+    const deliveryContext = routedContext || telegramMessageContext(replyMessageId);
+    const semantic = deliveryContext?.semantic;
+    if (!["feedback", "feedback_undo"].includes(semantic?.route) || semantic.domain !== "jobs") return false;
     const feedbackText = message.briefingFeedbackText || (deliveryContext?.pendingFeedback
       ? `${deliveryContext.pendingFeedback}\n추가 답변: ${text}`
       : text);
     const candidates = message.briefingTarget?.domain === "jobs"
       ? [{ ...message.briefingTarget, ...getJobPosting(message.briefingTarget.id), index: message.briefingTarget.index }]
       : jobsForDigest(replyMessageId).map((job) => ({ ...job, index: job.item_index }));
-    if (deliveryContext?.domain === "jobs" && deliveryContext?.kind === "digest") {
+    if (["jobs", "briefing"].includes(deliveryContext?.domain)) {
       for (const item of deliveryContext.items || []) {
+        if (item.domain && item.domain !== "jobs") continue;
         if (candidates.some((candidate) => candidate.id === item.id)) continue;
         const job = getJobPosting(item.id);
         if (job) candidates.push({ ...job, index: item.index });
@@ -107,59 +110,33 @@ export function createJobsBotModule({
     }
     if (!candidates.length) return false;
     const feedbackContext = { domain: "jobs", kind: "digest", items: candidates.map((item) => ({ index: item.index, id: item.id })) };
-    if (undoFeedbackPattern.test(feedbackText)) {
-      const resolution = resolveFeedbackTarget(feedbackText, candidates);
+    if (semantic.route === "feedback_undo") {
+      const undoTarget = semantic.targetIndex
+        ? candidates.find((candidate) => Number(candidate.index) === semantic.targetIndex)
+        : null;
       await sendMessage(formatUndoResult(undoLatestFeedback({
-        domain: "jobs", entityId: resolution.item?.id || null, text: feedbackText,
+        domain: "jobs", entityId: undoTarget?.id || null, text: feedbackText,
       })));
       return true;
     }
-    let interpretation = null;
-    let aiFailed = false;
-    if (aiEnabled()) {
-      try {
-        telegram("sendChatAction", { chat_id: message.chat.id, action: "typing" }).catch(() => {});
-        interpretation = await interpret(feedbackText, { domain: "jobs", items: candidates });
-      } catch (error) {
-        aiFailed = true;
-        console.error("Feedback AI failed; using deterministic fallback", error.message);
-      }
-    }
-    let job = interpretation?.targetIndex
-      ? candidates.find((candidate) => Number(candidate.index) === interpretation.targetIndex)
+    const interpretation = {
+      intent: semantic.feedbackIntent,
+      targetIndex: semantic.targetIndex,
+      scope: semantic.scope,
+      strength: semantic.strength,
+      preference: semantic.preference,
+      keywords: semantic.keywords,
+      aspects: semantic.aspects,
+      ruleKind: semantic.ruleKind,
+      ruleKeyword: semantic.ruleKeyword,
+      confidence: semantic.confidence,
+      reason: semantic.reason,
+      clarification: semantic.clarification,
+      source: "global-ai",
+    };
+    const job = semantic.targetIndex
+      ? candidates.find((candidate) => Number(candidate.index) === semantic.targetIndex)
       : null;
-    if (!interpretation) {
-      const resolution = resolveFeedbackTarget(feedbackText, candidates);
-      job = resolution.item;
-      if (!job) {
-        await sendMessage(feedbackTargetQuestion(candidates, resolution), {}, {
-          context: { ...feedbackContext, pendingFeedback: feedbackText },
-        });
-        return true;
-      }
-      {
-        const parsed = parseEntityFeedback(feedbackText, { domain: "jobs", company: job.company });
-        if (!parsed) {
-          await sendMessage(aiFailed
-            ? "AI 해석기가 잠시 응답하지 않아 이 의견은 변경 없이 보류했어요. 잠시 뒤 같은 메시지에 다시 답장해 주세요."
-            : "공고는 찾았습니다. 평소 말투로 의견을 알려주세요. 예: ‘괜찮아 보이네’, ‘좀 별로’, ‘지원했어’, ‘이 회사 다음부터 빼줘’.",
-          {}, { context: { ...feedbackContext, pendingFeedback: feedbackText } });
-          return true;
-        }
-        interpretation = {
-          intent: parsed.durableRule ? "durable_rule" : parsed.signal,
-          scope: parsed.durableRule ? "company" : "item",
-          strength: "medium",
-          preference: feedbackText,
-          keywords: [],
-          ruleKind: parsed.durableRule ? "exclude_company" : "none",
-          ruleKeyword: parsed.durableRule?.keyword || null,
-          confidence: 100,
-          reason: "명시적 표현 규칙으로 해석",
-          source: "rules",
-        };
-      }
-    }
     if (interpretation.intent === "clarify") {
       await sendMessage(
         interpretation.clarification || "어느 공고에 대한 어떤 의견인지 조금만 더 알려주세요.",

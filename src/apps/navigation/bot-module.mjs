@@ -1,6 +1,4 @@
-import { telegram } from "../../telegram.mjs";
 import { sendMoreRecommendations } from "../briefing/report.mjs";
-import { classifyNavigationIntent } from "./ai-parser.mjs";
 
 function pageOffset(domain, context) {
   if (!context) return 0;
@@ -12,10 +10,7 @@ function pageOffset(domain, context) {
 }
 
 export function createNavigationBotModule({
-  classify = classifyNavigationIntent,
   sendMore = sendMoreRecommendations,
-  typing = (chatId) => telegram("sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}),
-  log = console,
 } = {}) {
   return {
     id: "navigation",
@@ -23,22 +18,17 @@ export function createNavigationBotModule({
     commands: [],
 
     canHandleMessage(_message, context) {
-      return ["jobs", "housing", "briefing"].includes(context?.domain);
+      return ["recommendations_list", "recommendations_next"].includes(context?.semantic?.route);
     },
 
     async handleMessage(message, context = null) {
       const text = String(message.text || message.caption || "").trim();
       if (!text || text.startsWith("/")) return false;
-      typing(message.chat?.id);
-      let result;
-      try {
-        result = await classify(text, context);
-      } catch (error) {
-        log.warn("Navigation intent AI failed", error.message);
-        return false;
-      }
-      if (result.intent === "not_navigation") return false;
-      await sendMore(result.domain, { offset: pageOffset(result.domain, context) });
+      const result = context?.semantic;
+      if (!["recommendations_list", "recommendations_next"].includes(result?.route)) return false;
+      if (!["jobs", "housing"].includes(result.domain)) return false;
+      const offset = result.route === "recommendations_next" ? pageOffset(result.domain, context) : 0;
+      await sendMore(result.domain, { offset });
       return true;
     },
   };

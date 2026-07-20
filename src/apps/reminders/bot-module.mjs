@@ -4,10 +4,9 @@ import {
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { formatReminderTime, kstDateTimeToIso, proposeReminder } from "./service.mjs";
 import { calendarSyncStatus } from "../../integrations/google-calendar.mjs";
-import { looksLikeReminderClarification, looksLikeReminderRequest, parseReminderRequest } from "./ai-parser.mjs";
 
 function parseCreate(text) {
-  const match = text.match(/^(?:\/remind(?:@\w+)?|알림\s*등록)\s+(20\d{2}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$/i);
+  const match = text.match(/^\/remind(?:@\w+)?\s+(20\d{2}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$/i);
   if (!match) return null;
   const [title, url] = match[3].split(/\s*\|\s*(?=https?:\/\/)/, 2);
   return { date: match[1], time: match[2], title: title.trim(), url: url?.trim() || null };
@@ -45,6 +44,11 @@ export const reminderBotModule = {
     { command: "calendar_status", description: "🔔 Google Calendar 연동 상태" },
   ],
 
+  canHandleMessage(_message, context) {
+    return ["reminder_create", "reminder_clarify", "reminder_cancel", "reminders_list"]
+      .includes(context?.semantic?.route);
+  },
+
   canHandleCallback(query) {
     return String(query.data || "").startsWith("r:");
   },
@@ -72,7 +76,7 @@ export const reminderBotModule = {
     });
   },
 
-  async handleMessage(message) {
+  async handleMessage(message, context = null) {
     const text = String(message.text || "").trim();
     if (/^\/(?:calendar_status|calendar)(?:@\w+)?$/i.test(text)) {
       const status = calendarSyncStatus();
@@ -85,7 +89,7 @@ export const reminderBotModule = {
       ].filter(Boolean).join("\n"));
       return true;
     }
-    if (/^\/reminders(?:@\w+)?$/i.test(text) || /^알림\s*(?:목록|보여줘)$/i.test(text)) {
+    if (/^\/reminders(?:@\w+)?$/i.test(text) || context?.semantic?.route === "reminders_list") {
       const reminders = listReminders();
       await sendMessage(
         reminders.length
@@ -121,51 +125,32 @@ export const reminderBotModule = {
       return true;
     }
     const pending = pendingClarification();
-    if (pending && /^(?:취소|그만|됐어)[.!\s]*$/.test(text)) {
+    const semantic = context?.semantic;
+    if (semantic?.route === "reminder_cancel") {
       clearClarification();
       await sendMessage("알림 등록을 취소했어요.");
       return true;
     }
-    if (pending && /^\//.test(text)) {
-      if (!/^\/remind(?:@\w+)?\b/i.test(text)) clearClarification();
-      return false;
+    if (semantic?.route === "reminder_clarify") {
+      const requestText = pending ? `${pending.text}\n추가 답변: ${text}` : text;
+      saveClarification(requestText);
+      await sendMessage(`🕐 ${semantic.clarification || "알림 날짜와 정확한 시간을 알려 주세요."}`);
+      return true;
     }
-    if (pending && (
-      message.document || message.photo || message.video || message.voice
-      || !looksLikeReminderClarification(text)
-    )) {
-      clearClarification();
-      return false;
-    }
-    if (!pending && !looksLikeReminderRequest(text)) return false;
-    const requestText = pending ? `${pending.text}\n추가 답변: ${text}` : text;
-
-    try {
-      const request = await parseReminderRequest(requestText);
-      if (request.intent === "not_reminder") {
-        clearClarification();
-        return false;
-      }
-      if (request.intent === "needs_clarification") {
-        saveClarification(requestText);
-        await sendMessage(`🕐 ${request.clarification}`);
-        return true;
-      }
+    if (semantic?.route === "reminder_create") {
+      const requestText = pending ? `${pending.text}\n추가 답변: ${text}` : text;
       clearClarification();
       await proposeReminder({
-        title: request.title,
-        dueAt: request.dueAt,
-        url: request.url,
+        title: semantic.title,
+        dueAt: semantic.eventAt,
+        url: semantic.url,
         module: "global",
-        entityKey: `manual-ai:${request.dueAt}:${request.title}`,
+        entityKey: `manual-ai:${semantic.eventAt}:${semantic.title}`,
         metadata: { source: "telegram-ai", originalText: requestText.slice(0, 1000) },
       });
       return true;
-    } catch (error) {
-      clearClarification();
-      console.error("Reminder AI parse failed", error.message);
-      await sendMessage("⚠️ 알림 요청을 해석하지 못했습니다. 날짜와 시간을 포함해 다시 말씀해 주세요.");
-      return true;
     }
+    if (pending && text.startsWith("/")) clearClarification();
+    return false;
   },
 };

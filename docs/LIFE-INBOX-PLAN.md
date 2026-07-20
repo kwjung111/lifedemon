@@ -38,8 +38,8 @@ Acceptance tests should simulate duplicate crawls, changed deadlines, weekend ac
 
 ## Token and maintenance guardrails
 
-- Deterministic routes remain the default and use zero model tokens.
-- AI is limited to one structured classification or correction per ambiguous user message; no follow-up model call is allowed in the same route. Recent natural Inbox feedback is included only as bounded soft context for these already-ambiguous routes.
-- Prompts receive at most 2,500 characters of user text and public attachment metadata, never attachment bodies or credentials.
-- Daily telemetry records AI call count and input/output characters. Provider token totals are not estimated as exact values when the CLI does not expose them.
+- Fixed slash commands and callback protocols remain deterministic and use zero model tokens.
+- Every free-form message uses exactly one global structured interpretation; no module-level interpretation or semantic-regex fallback is allowed in the same route.
+- Prompts receive at most 3,000 characters of user text, bounded public reply labels, and public attachment metadata, never attachment bodies or credentials.
+- Provider token totals are not estimated as exact values when the CLI does not expose them.
 - New risk, confidence, and attention logic must remain shared policy modules. Domain apps provide facts and execute authorized actions; they do not copy policy branches.

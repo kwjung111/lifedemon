@@ -18,7 +18,7 @@ Three independent read-only reviews covered code integrity, realistic single-use
 | Ambiguous target | No mutation; one short request for an item number | `test/inbox.test.mjs` |
 | Impossible date | No JavaScript rollover; item is not saved | `test/inbox.test.mjs` |
 | First-time discovery | Seven visible commands and one short `/help` message | `test/manual.test.mjs` |
-| Free-form recommendation navigation | AI resolves paraphrased job/housing list intent and contextual continuation; uncertainty makes no navigation action | `test/navigation.test.mjs` |
+| Free-form intent and target routing | One global AI call resolves navigation, Inbox, reminder, feedback, tracking, and manager intent; uncertainty makes no mutation | `test/message-interpreter.test.mjs`, `test/bot-runtime.test.mjs` |
 
 ## Cognitive-load constraints
 
@@ -28,7 +28,7 @@ Three independent read-only reviews covered code integrity, realistic single-use
 - Lists show eight items and three example replies, with no per-item buttons.
 - The morning message remains the only scheduled weekday briefing.
 - Reply context is resolved before broad keyword routing, so the user does not need domain-specific correction commands.
-- Fixed commands stay immediate, while free-form recommendation navigation uses one bounded AI classification instead of an expanding phrase-regex list.
+- Fixed commands stay immediate, while every free-form message uses one bounded global AI interpretation instead of expanding semantic phrase-regex lists or duplicate per-module calls.
 
 ## Known limits
 

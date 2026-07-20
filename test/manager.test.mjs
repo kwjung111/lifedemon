@@ -29,8 +29,6 @@ process.env.TELEGRAM_CHAT_ID = "1";
 
 const {
   answerManagerQuestion,
-  directManagerAnswer,
-  looksLikeManagerQuestion,
 } = await import("../src/apps/manager/query.mjs");
 const { createManagerBotModule } = await import("../src/apps/manager/bot-module.mjs");
 const { diagnosticDecisionSchema, runReadOnlyDiagnosticAgent } = await import("../src/apps/manager/agent.mjs");
@@ -71,25 +69,6 @@ function fixtureSnapshot() {
     ],
   };
 }
-
-test("recognizes explicit and natural manager questions without claiming unrelated chat", () => {
-  assert.equal(looksLikeManagerQuestion("/ask 수집이 언제 돌았지?"), true);
-  assert.equal(looksLikeManagerQuestion("/job 에서 현재 내 채용공고 우선순위가 어떻게 되지?"), true);
-  assert.equal(looksLikeManagerQuestion("그거 왜 실패했지?"), true);
-  assert.equal(looksLikeManagerQuestion("오늘 점심 뭐 먹지?"), false);
-  assert.equal(looksLikeManagerQuestion("봇 오류 확인해야"), false);
-});
-
-test("answers common priority and collection questions deterministically", () => {
-  const priority = directManagerAnswer("현재 내 채용 우선순위가 어떻게 돼?", fixtureSnapshot());
-  assert.match(priority, /DevOps → SRE/);
-  assert.match(priority, /잡플래닛 3점 이상/);
-  assert.match(priority, /Example — SRE/);
-
-  const collection = directManagerAnswer("수집이 마지막으로 언제 돌았지?", fixtureSnapshot());
-  assert.match(collection, /마지막 성공/);
-  assert.match(collection, /2026-07-20 09:20:00 KST/);
-});
 
 test("routes nontrivial questions to the read-only diagnostic agent", async () => {
   let calls = 0;
@@ -154,7 +133,7 @@ test("retries the autonomous agent with the configured API fallback only for quo
   assert.equal(answer, "fallback 응답");
 });
 
-test("routes a slash-job natural question through the manager module", async () => {
+test("routes globally interpreted natural questions through the manager module", async () => {
   const sent = [];
   const questions = [];
   const module = createManagerBotModule({
@@ -165,9 +144,13 @@ test("routes a slash-job natural question through the manager module", async () 
     },
     send: async (message) => sent.push(message),
   });
-  assert.equal(await module.handleMessage({ text: "/job 에서 우선순위 알려줘" }), true);
-  assert.deepEqual(sent, ["질문: /job 에서 우선순위 알려줘"]);
-  assert.equal(await module.handleMessage({ text: "왜 실패했지?" }), true);
+  assert.equal(await module.handleMessage({ text: "채용 우선순위 알려줘" }, {
+    semantic: { route: "manager_question", question: "채용 우선순위 알려줘", followUp: false },
+  }), true);
+  assert.deepEqual(sent, ["질문: 채용 우선순위 알려줘"]);
+  assert.equal(await module.handleMessage({ text: "왜 실패했지?" }, {
+    semantic: { route: "manager_question", question: "왜 실패했지?", followUp: true },
+  }), true);
   assert.match(questions[1], /이전 대화/);
   assert.match(questions[1], /현재 질문/);
   assert.equal(await module.handleMessage({ text: "오늘 점심 뭐 먹지?" }), false);

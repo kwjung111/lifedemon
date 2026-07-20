@@ -14,10 +14,9 @@ globalThis.fetch = async () => ({
   json: async () => ({ ok: true, result: { message_id: 100, date: 1 } }),
 });
 
-const { classifyInboxByRules, classifyInboxMessage } = await import("../src/apps/inbox/classifier.mjs");
 const { createInboxBotModule } = await import("../src/apps/inbox/bot-module.mjs");
 const {
-  createInboxItem, getInboxItem, inboxClassifierUsage, listInboxActionItems, listInboxItems,
+  createInboxItem, getInboxItem, listInboxActionItems, listInboxItems,
 } = await import("../src/apps/inbox/store.mjs");
 const { isValidCalendarDate } = await import("../src/apps/reminders/service.mjs");
 const { platformDb } = await import("../src/core/state.mjs");
@@ -27,50 +26,9 @@ test.after(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-test("classifies exact events without an AI call", async () => {
-  const result = await classifyInboxMessage({ text: "2026-08-22 14:00 병원 예약" }, {
-    modelRunner: async () => { throw new Error("AI should not run"); },
-  });
-  assert.equal(result.kind, "event");
-  assert.equal(result.eventAt, "2026-08-22T05:00:00.000Z");
-  assert.equal(inboxClassifierUsage().rule_calls, 1);
-  assert.equal(inboxClassifierUsage().ai_calls, 0);
-});
-
-test("stores captionless documents as references", () => {
-  const result = classifyInboxByRules({
-    document: { file_id: "file-1", file_name: "contract.pdf", mime_type: "application/pdf" },
-  });
-  assert.equal(result.kind, "reference");
-  assert.equal(result.title, "contract.pdf");
-  assert.equal(result.nextAction, "첨부 내용 확인");
-});
-
-test("rejects impossible dates and accepts leap day", () => {
-  assert.equal(classifyInboxByRules({ text: "2026-02-31 14:00 병원 예약" }).intent, "invalid_date");
+test("validates calendar dates mechanically", () => {
   assert.equal(isValidCalendarDate("2026-02-29"), false);
   assert.equal(isValidCalendarDate("2028-02-29"), true);
-});
-
-test("lets AI reject a conversational question instead of saving it", async () => {
-  const result = await classifyInboxMessage({ text: "오늘 날씨 어때?" }, {
-    modelRunner: async () => ({
-      intent: "not_inbox", kind: "note", title: "", event_at: null,
-      next_action: "", url: null, assumptions: [],
-    }),
-  });
-  assert.equal(result.intent, "not_inbox");
-  assert.equal(inboxClassifierUsage().ai_calls, 0);
-});
-
-test("keeps a grounded relative-date event returned with an explicit timezone", async () => {
-  const result = await classifyInboxMessage({ text: "내일 오후 2시 병원" }, {
-    modelRunner: async () => ({
-      intent: "save", kind: "event", title: "병원", event_at: "2026-07-21T14:00:00+09:00",
-      next_action: "병원 방문", url: null, assumptions: [],
-    }),
-  });
-  assert.equal(result.eventAt, "2026-07-21T05:00:00.000Z");
 });
 
 test("saves once and accepts a natural reply to cancel", async () => {
@@ -83,20 +41,19 @@ test("saves once and accepts a natural reply to cancel", async () => {
       return { message_id: 200 };
     },
     contextForMessage: (messageId) => messageId === 200 ? context : null,
-    classify: async () => ({
-      intent: "save", kind: "task", title: "보험 갱신", eventAt: null,
-      nextAction: "보험사에 전화", url: null, assumptions: [], classifier: "rules",
-    }),
   });
 
-  assert.equal(await module.handleMessage({ message_id: 10, text: "보험 갱신해야", chat: { id: 1 } }), true);
-  assert.match(sent[0], /^✅ 할 일 저장/);
+  assert.equal(await module.handleMessage(
+    { message_id: 10, text: "보험 갱신해야", chat: { id: 1 } },
+    { semantic: { route: "inbox_create", kind: "task", title: "보험 갱신", nextAction: "보험사에 전화", assumptions: [] } },
+  ), true);
+  assert.match(sent[0], /^📥 할 일/);
   assert.equal(listInboxItems().length, 1);
 
   assert.equal(await module.handleMessage({
     message_id: 11, text: "이거 취소해", chat: { id: 1 },
     reply_to_message: { message_id: 200 },
-  }), true);
+  }, { ...context, semantic: { route: "inbox_cancel", targetIndex: 1, reason: "사용자 취소" } }), true);
   assert.match(sent[1], /^🗑️ 취소했어요/);
   assert.equal(listInboxItems().length, 0);
 });
@@ -126,15 +83,21 @@ test("supports numbered list replies, paging, and bounded action ranking", async
   assert.match(sent.at(-1).text, /1–8/);
   const firstContext = lastContext;
 
-  await module.handleMessage({ message_id: 301, text: "2번 완료", chat: { id: 1 } }, firstContext);
+  await module.handleMessage({ message_id: 301, text: "2번 완료", chat: { id: 1 } }, {
+    ...firstContext, semantic: { route: "inbox_complete", targetIndex: 2, reason: "완료" },
+  });
   assert.equal(getInboxItem(firstContext.items[1].id).status, "completed");
 
-  await module.handleMessage({ message_id: 302, text: "더 보여줘", chat: { id: 1 } }, firstContext);
+  await module.handleMessage({ message_id: 302, text: "더 보여줘", chat: { id: 1 } }, {
+    ...firstContext, semantic: { route: "inbox_next" },
+  });
   assert.ok(lastContext.offset >= 8);
   assert.ok(lastContext.items.length >= 1);
   const secondContext = lastContext;
   assert.equal(secondContext.items.some((item) => firstContext.seenIds.includes(item.id)), false);
-  await module.handleMessage({ message_id: 303, text: "더 보여줘", chat: { id: 1 } }, secondContext);
+  await module.handleMessage({ message_id: 303, text: "더 보여줘", chat: { id: 1 } }, {
+    ...secondContext, semantic: { route: "inbox_next" },
+  });
   assert.match(sent.at(-1).text, /더 보여드릴 활성 항목이 없어요/);
   assert.equal(listInboxActionItems({ now: new Date("2026-07-20T00:00:00.000Z") }).some((item) => item.title === "오래된 일정"), false);
 });
@@ -151,7 +114,9 @@ test("re-sends a stored attachment from a numbered list reply", async () => {
     telegramApi: async (method, payload) => calls.push({ method, payload }),
   });
   const context = { domain: "inbox", kind: "list", items: [{ index: 1, id: item.id, domain: "inbox", title: item.title }] };
-  await module.handleMessage({ message_id: 401, text: "1번 보여줘", chat: { id: 1 } }, context);
+  await module.handleMessage({ message_id: 401, text: "1번 보여줘", chat: { id: 1 } }, {
+    ...context, semantic: { route: "inbox_show", targetIndex: 1 },
+  });
   assert.equal(calls[0].method, "sendDocument");
   assert.equal(calls[0].payload.document, "telegram-file");
 });
@@ -168,6 +133,7 @@ test("prefers the attachment when an item also has a source link", async () => {
   });
   await module.handleMessage({ message_id: 451, text: "1번 파일 보여줘", chat: { id: 1 } }, {
     domain: "inbox", kind: "list", items: [{ index: 1, id: item.id, domain: "inbox", title: item.title }],
+    semantic: { route: "inbox_show", targetIndex: 1 },
   });
   assert.equal(calls[0].payload.document, "dual-file");
   assert.match(calls[0].payload.caption, /https:\/\/example\.test\/contract/);
@@ -190,14 +156,16 @@ test("opens a stored link and asks once when a list target is ambiguous", async 
       { index: 2, id: other.id, domain: "inbox", title: other.title },
     ],
   };
-  await module.handleMessage({ message_id: 502, text: "1번 보여줘", chat: { id: 1 } }, context);
+  await module.handleMessage({ message_id: 502, text: "1번 보여줘", chat: { id: 1 } }, {
+    ...context, semantic: { route: "inbox_show", targetIndex: 1 },
+  });
   assert.match(sent.at(-1), /https:\/\/example\.test\/item/);
-  await module.handleMessage({ message_id: 503, text: "완료", chat: { id: 1 } }, context);
-  assert.match(sent.at(-1), /어느 항목인지 번호/);
+  await module.handleMessage({ message_id: 503, text: "완료", chat: { id: 1 } }, {
+    ...context, semantic: { route: "inbox_complete", targetIndex: null },
+  });
+  assert.match(sent.at(-1), /어느 항목인지 찾지 못했어요/);
   assert.equal(getInboxItem(linked.id).status, "active");
   assert.equal(getInboxItem(other.id).status, "active");
-  await module.handleMessage({ message_id: 504, text: "완료", chat: { id: 1 } });
-  assert.match(sent.at(-1), /\/inbox 목록/);
 });
 
 test("proposes a timed reminder from an exact future Inbox event", async () => {
@@ -212,12 +180,13 @@ test("proposes a timed reminder from an exact future Inbox event", async () => {
   });
   await module.handleMessage({ message_id: 601, text: "알림도 등록해", chat: { id: 1 } }, {
     domain: "inbox", kind: "item", entityId: event.id,
+    semantic: { route: "inbox_reminder", targetIndex: 1 },
   });
   assert.equal(proposals[0].dueAt, event.event_at);
   assert.equal(proposals[0].metadata.entityId, event.id);
 });
 
-test("rejects an impossible date correction without mutating the event", async () => {
+test("does not mutate when an AI update contains no validated change", async () => {
   const event = createInboxItem({
     kind: "event", title: "진료", nextAction: "방문",
     eventAt: "2026-08-22T05:00:00.000Z", classifier: "rules", sourceMessageId: 700,
@@ -226,7 +195,8 @@ test("rejects an impossible date correction without mutating the event", async (
   const module = createInboxBotModule({ send: async (text) => sent.push(text) });
   await module.handleMessage({ message_id: 701, text: "2026-02-31 14:00로 변경", chat: { id: 1 } }, {
     domain: "inbox", kind: "item", entityId: event.id,
+    semantic: { route: "inbox_update", targetIndex: 1, reason: "유효하지 않은 날짜" },
   });
-  assert.match(sent[0], /존재하지 않는 날짜/);
+  assert.match(sent[0], /바꿀 내용을 찾지 못했어요/);
   assert.equal(getInboxItem(event.id).event_at, "2026-08-22T05:00:00.000Z");
 });

@@ -106,3 +106,54 @@ test("routes reply context before broad keyword handlers", async () => {
   });
   assert.deepEqual(routed, ["inbox"]);
 });
+
+test("interprets free-form text exactly once and forwards only the structured result", async () => {
+  let interpretations = 0;
+  let receivedContext = null;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{
+      id: "semantic",
+      canHandleMessage: (_message, context) => context?.semantic?.route === "job_status",
+      handleMessage: async (_message, context) => { receivedContext = context; return true; },
+    }],
+    interpretMessage: async () => {
+      interpretations += 1;
+      return { route: "job_status", domain: "jobs", confidence: 99 };
+    },
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "지원 현황 알려줘" });
+  assert.equal(interpretations, 1);
+  assert.equal(receivedContext.semantic.route, "job_status");
+});
+
+test("does not execute a module when the global interpreter fails", async () => {
+  const sent = [];
+  let executed = false;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async (text) => sent.push(text),
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{ id: "unsafe-fallback", handleMessage: async () => { executed = true; return true; } }],
+    interpretMessage: async () => { throw new Error("AI unavailable"); },
+    loadOffset: () => 0, saveOffset: () => null,
+    log: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "이거 처리해" });
+  assert.equal(executed, false);
+  assert.match(sent[0], /아무 작업도 실행하지 않았어요/);
+});
+
+test("keeps fixed slash commands deterministic without an interpretation call", async () => {
+  let interpretations = 0;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{ id: "help", handleMessage: async () => true }],
+    interpretMessage: async () => { interpretations += 1; return { route: "not_supported" }; },
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "/help" });
+  assert.equal(interpretations, 0);
+});

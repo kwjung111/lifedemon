@@ -63,21 +63,22 @@ all results but do not send separate daily messages.
 
 The briefing includes every actionable event due today, application counts, and
 at most the top three housing and top three job recommendations. A domain whose
-top recommendations did not change is reduced to `변경 없음`. Reply with normal
-language such as `4번 지원했어`; the mixed-domain context routes the number to
-the correct tracker. Free-form requests such as `채용공고 싹 보여줘` are classified
-by a bounded AI navigation router rather than a phrase regex. It returns only one
-bounded page; replying with another natural continuation retrieves the next page.
+top recommendations did not change is reduced to `변경 없음`. Every free-form
+Telegram message is interpreted once by one bounded structured AI router. The
+result includes route, domain, target, extracted fields, confidence, and any
+clarification; domain modules validate and execute that result without a second
+interpretation call or semantic phrase-regex fallback. Fixed slash commands and
+callback protocols remain deterministic.
 `/housing_status` remains the housing
 application-status view, while `/jobs` retains the detailed job recommendation view.
 
 ## Life Inbox
 
-Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. Clear inputs are classified locally; only ambiguous free text uses Codex. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. The global AI interpreter decides whether it is an Inbox item and extracts only structured, validated fields. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
 
 The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md) and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
 
-Classifier telemetry records rule/AI call counts and bounded input/output character counts in `platform.sqlite`; it does not store or claim exact provider token usage. Set `INBOX_AI_ENABLED=false` to keep every otherwise ambiguous statement as a reversible note without an AI call.
+If the interpreter is unavailable or uncertain, the bot performs no mutation and asks for a retry or one concise clarification. It never silently switches to a keyword parser.
 
 ## Low-friction feedback
 
@@ -93,16 +94,15 @@ button. Other feedback is sent by replying to the digest with the item number:
 콘텐츠브릿지는 지원해볼 만함
 ```
 
-The wording is conversational rather than command-only. A reply may identify an
-item by number anywhere in the sentence, Korean ordinal, company/source name, or
-a distinctive title term. A single-item message also accepts `이건 별로`
-without a number. An AI-first interpreter resolves the target and preserves the
+The wording is conversational rather than command-only. The global interpreter
+resolves numbers, ordinals, company/source names, distinctive title terms, and
+single-item reply context semantically. It preserves the
 meaning, scope, strength, and separate positive/negative aspects of nuanced
 feedback. It runs directly from the reply without `/ask`. Only public digest
 labels are sent to the interpreter; private posting bodies and credentials are
 not included. Low-confidence or ambiguous interpretations produce one short
 clarification instead of a guessed mutation. If the interpreter is unavailable,
-the narrow deterministic parser remains as a safe fallback.
+the message is left unchanged and the user is asked to retry.
 
 Item feedback is stored in the shared platform database. A negative reply hides
 that item but does not silently become a permanent preference. Wording that
@@ -169,9 +169,8 @@ without a separate usage command. Common operations questions may also be sent
 without a command, such as `채용공고 우선순위가 어떻게 돼?` or
 `수집이 마지막으로 언제 돌았지?`.
 
-Common health and priority questions are formatted directly from a bounded
-snapshot. More complex or causal questions start an autonomous read-only
-investigation. The agent may adaptively inspect an allowlisted Life Daemon
+Natural operations questions are routed by the same global interpreter and then
+answered by an autonomous read-only investigation. The agent may adaptively inspect an allowlisted Life Daemon
 service or timer, bounded journal logs, SQLite integrity and queue state, server
 resources, deployment state, configuration presence, fixed upstream network
 connectivity, deployed unit definitions, and bounded source-code matches.
@@ -231,13 +230,13 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 
 - `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
 - `src/apps/briefing/`: The bounded weekday cross-domain briefing and reply delegation
-- `src/apps/navigation/`: AI intent routing for free-form recommendation navigation
+- `src/apps/navigation/`: execution adapter for globally interpreted recommendation navigation
 - `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
 - `src/apps/manager/`: Read-only operational questions and Codex conversation
 - `src/apps/manual/`: One-screen Telegram manual and detailed command guide
 - `src/modules.mjs`: Enabled modules and the curated seven-command Telegram menu
 
-- `src/core/`: Telegram 라우팅과 플랫폼 상태
+- `src/core/`: one-pass AI message interpretation, Telegram routing, and platform state
 - `src/apps/housing/`: 주거 도메인 명령과 공식 링크 탐색
 - `src/apps/jobs/`: 채용 공고 수집, 기업 검증, 사용자 적합도 필터링
 - `src/apps/reminders/`: 전역 이벤트·리마인더
