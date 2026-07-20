@@ -76,7 +76,7 @@ application-status view, while `/jobs` retains the detailed job recommendation v
 
 Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. The global AI interpreter decides whether it is an Inbox item and extracts only structured, validated fields. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
 
-The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md) and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
+The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md), the one-pass interpretation design at [docs/MESSAGE-INTERPRETATION.md](./docs/MESSAGE-INTERPRETATION.md), and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
 
 If the interpreter is unavailable or uncertain, the bot performs no mutation and asks for a retry or one concise clarification. It never silently switches to a keyword parser.
 
@@ -229,8 +229,7 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 ## Structure
 
 - `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
-- `src/apps/briefing/`: The bounded weekday cross-domain briefing and reply delegation
-- `src/apps/navigation/`: execution adapter for globally interpreted recommendation navigation
+- `src/apps/briefing/`: The bounded weekday cross-domain briefing and recommendation-list execution
 - `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
 - `src/apps/manager/`: Read-only operational questions and Codex conversation
 - `src/apps/manual/`: One-screen Telegram manual and detailed command guide
@@ -258,8 +257,8 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 ## Natural-language reminders
 
 The Telegram gateway accepts natural Korean reminder requests such as
-`/remind 내일 오후 3시에 병원 예약 알려줘`. A sandboxed, tool-free Codex
-request converts relative dates in the
+`/remind 내일 오후 3시에 병원 예약 알려줘`. The same sandboxed, tool-free
+global interpreter used for other free-form messages converts relative dates in the
 `Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
 times cause a clarification question instead of a guessed schedule. The parsed
 time and title are shown with the existing approval buttons before registration.
@@ -267,7 +266,7 @@ The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
 AI-free fallback. Natural-language parsing uses the server's ChatGPT-linked Codex
 login first and only uses `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) when a
 valid fallback key is configured and the login reports a quota or authentication
-failure. The parser has no web search and runs in a temporary read-only sandbox.
+failure. The interpreter has no web search and runs in a temporary read-only sandbox.
 
 ## Google Calendar sync
 

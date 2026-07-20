@@ -62,12 +62,12 @@ test("supports numbered list replies, paging, and bounded action ranking", async
   for (let index = 1; index <= 9; index += 1) {
     createInboxItem({
       kind: "task", title: `생활 할 일 ${index}`, nextAction: `처리 ${index}`,
-      classifier: "rules", sourceMessageId: 100 + index,
+      sourceMessageId: 100 + index,
     });
   }
   createInboxItem({
     kind: "event", title: "오래된 일정", nextAction: "확인",
-    eventAt: "2020-01-01T00:00:00.000Z", classifier: "rules", sourceMessageId: 200,
+    eventAt: "2020-01-01T00:00:00.000Z", sourceMessageId: 200,
   });
   const sent = [];
   let lastContext = null;
@@ -106,7 +106,7 @@ test("re-sends a stored attachment from a numbered list reply", async () => {
   const item = createInboxItem({
     kind: "reference", title: "계약서", nextAction: "검토",
     attachment: { type: "document", fileId: "telegram-file" },
-    classifier: "rules", sourceMessageId: 400,
+    sourceMessageId: 400,
   });
   const calls = [];
   const module = createInboxBotModule({
@@ -124,7 +124,7 @@ test("re-sends a stored attachment from a numbered list reply", async () => {
 test("prefers the attachment when an item also has a source link", async () => {
   const item = createInboxItem({
     kind: "reference", title: "링크 포함 계약서", nextAction: "검토", sourceUrl: "https://example.test/contract",
-    attachment: { type: "document", fileId: "dual-file" }, classifier: "rules", sourceMessageId: 450,
+    attachment: { type: "document", fileId: "dual-file" }, sourceMessageId: 450,
   });
   const calls = [];
   const module = createInboxBotModule({
@@ -142,10 +142,10 @@ test("prefers the attachment when an item also has a source link", async () => {
 test("opens a stored link and asks once when a list target is ambiguous", async () => {
   const linked = createInboxItem({
     kind: "watch", title: "참고 링크", nextAction: "확인", sourceUrl: "https://example.test/item",
-    classifier: "rules", sourceMessageId: 500,
+    sourceMessageId: 500,
   });
   const other = createInboxItem({
-    kind: "task", title: "다른 항목", nextAction: "처리", classifier: "rules", sourceMessageId: 501,
+    kind: "task", title: "다른 항목", nextAction: "처리", sourceMessageId: 501,
   });
   const sent = [];
   const module = createInboxBotModule({ send: async (text) => sent.push(text) });
@@ -171,7 +171,7 @@ test("opens a stored link and asks once when a list target is ambiguous", async 
 test("proposes a timed reminder from an exact future Inbox event", async () => {
   const event = createInboxItem({
     kind: "event", title: "병원 예약", nextAction: "준비",
-    eventAt: "2026-08-22T05:00:00.000Z", classifier: "rules", sourceMessageId: 600,
+    eventAt: "2026-08-22T05:00:00.000Z", sourceMessageId: 600,
   });
   const proposals = [];
   const module = createInboxBotModule({
@@ -189,7 +189,7 @@ test("proposes a timed reminder from an exact future Inbox event", async () => {
 test("does not mutate when an AI update contains no validated change", async () => {
   const event = createInboxItem({
     kind: "event", title: "진료", nextAction: "방문",
-    eventAt: "2026-08-22T05:00:00.000Z", classifier: "rules", sourceMessageId: 700,
+    eventAt: "2026-08-22T05:00:00.000Z", sourceMessageId: 700,
   });
   const sent = [];
   const module = createInboxBotModule({ send: async (text) => sent.push(text) });

@@ -1,6 +1,6 @@
 # Telegram UX validation
 
-Date: 2026-07-20
+Date: 2026-07-21
 
 Three independent read-only reviews covered code integrity, realistic single-user conversations, and menu/document discoverability. The initial Life Inbox scored poorly for later management because lists had no reply targets, old events occupied the briefing, attachments could not be retrieved, and fourteen visible commands obscured the command-free workflow.
 
@@ -27,12 +27,12 @@ Three independent read-only reviews covered code integrity, realistic single-use
 - The primary menu contains seven choices. Advanced commands remain available under `/help 자세히`.
 - Lists show eight items and three example replies, with no per-item buttons.
 - The morning message remains the only scheduled weekday briefing.
-- Reply context is resolved before broad keyword routing, so the user does not need domain-specific correction commands.
+- Reply context is included in the single global interpretation, so the user does not need domain-specific correction commands.
 - Fixed commands stay immediate, while every free-form message uses one bounded global AI interpretation instead of expanding semantic phrase-regex lists or duplicate per-module calls.
 
 ## Known limits
 
 - Telegram photos and documents are referenced by Telegram file ID and can be re-sent, but their contents are not OCR'd or semantically analyzed yet.
-- Ambiguous free text and complex relative-date corrections can take one Codex call; deterministic inputs use none.
+- Every free-form message takes one bounded Codex interpretation call; fixed commands and button callbacks use none.
 - Inbox events do not create weekend or exact-time notifications unless a reminder is separately approved.
 - Permanent preference learning still requires the confidence/risk policy described in `docs/LIFE-INBOX-PLAN.md`.

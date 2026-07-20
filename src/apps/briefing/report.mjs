@@ -1,6 +1,6 @@
-import { getJobPosting, getJobSetting } from "../jobs/db.mjs";
+import { getJobSetting } from "../jobs/db.mjs";
 import { jobReportSnapshot } from "../jobs/report.mjs";
-import { getNotice, getSetting } from "../../db.mjs";
+import { getSetting } from "../../db.mjs";
 import { housingReportSnapshot } from "../../report.mjs";
 import {
   getPlatformSetting,
@@ -213,12 +213,4 @@ export async function sendMoreRecommendations(domain, { offset = 0, limit = 6 } 
       nextOffset: start + rows.length, remaining: snapshot.remaining,
     },
   });
-}
-
-export function briefingItem(context, text) {
-  const items = (context?.items || []).filter((item) => ["housing", "jobs"].includes(item.domain)).map((item) => ({
-    ...item,
-    ...(item.domain === "housing" ? getNotice(item.id) : getJobPosting(item.id)),
-  }));
-  return { items, context };
 }

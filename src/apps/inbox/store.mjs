@@ -13,7 +13,7 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'active',
     assumptions_json TEXT,
     attachment_json TEXT,
-    classifier TEXT NOT NULL,
+    classifier TEXT NOT NULL, -- Legacy column name; stores the interpreter origin.
     source_message_id INTEGER UNIQUE,
     version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
@@ -31,15 +31,6 @@ db.exec(`
     source_message_id INTEGER,
     created_at TEXT NOT NULL,
     FOREIGN KEY(item_id) REFERENCES inbox_items(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS inbox_classifier_usage (
-    usage_date TEXT PRIMARY KEY,
-    rule_calls INTEGER NOT NULL DEFAULT 0,
-    ai_calls INTEGER NOT NULL DEFAULT 0,
-    input_chars INTEGER NOT NULL DEFAULT 0,
-    output_chars INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL
   );
 `);
 
@@ -61,7 +52,7 @@ export function decodeInboxItem(row) {
 
 export function createInboxItem({
   kind, title, sourceText = null, sourceUrl = null, eventAt = null,
-  nextAction, assumptions = [], attachment = null, classifier = "rules",
+  nextAction, assumptions = [], attachment = null, interpretedBy = "global-ai",
   sourceMessageId = null,
 }) {
   const timestamp = now();
@@ -74,7 +65,7 @@ export function createInboxItem({
   `).run(
     kind, clean(title, 300), clean(sourceText, 4000), clean(sourceUrl, 2000), eventAt,
     clean(nextAction, 500) || "내용 확인", json(assumptions.slice(0, 6)), json(attachment),
-    classifier, sourceMessageId == null ? null : Number(sourceMessageId), timestamp, timestamp,
+    interpretedBy, sourceMessageId == null ? null : Number(sourceMessageId), timestamp, timestamp,
   );
   const row = result.changes
     ? db.prepare("SELECT * FROM inbox_items WHERE id=?").get(result.lastInsertRowid)
@@ -88,15 +79,6 @@ export function getInboxItem(id) {
 
 export function inboxItemForSourceMessage(sourceMessageId) {
   return decodeInboxItem(db.prepare("SELECT * FROM inbox_items WHERE source_message_id=?").get(Number(sourceMessageId)));
-}
-
-export function latestInboxItem({ activeOnly = false } = {}) {
-  const row = db.prepare(`
-    SELECT * FROM inbox_items
-    WHERE (?=0 OR status='active')
-    ORDER BY updated_at DESC, id DESC LIMIT 1
-  `).get(activeOnly ? 1 : 0);
-  return decodeInboxItem(row);
 }
 
 export function listInboxItems({ status = "active", limit = 20, offset = 0 } = {}) {
@@ -185,34 +167,4 @@ export function inboxRevisionForSource(itemId, sourceMessageId) {
   return db.prepare(`
     SELECT * FROM inbox_revisions WHERE item_id=? AND source_message_id=? ORDER BY id DESC LIMIT 1
   `).get(Number(itemId), Number(sourceMessageId)) || null;
-}
-
-export function recordInboxClassifierUsage({ classifier, input = "", output = "", at = new Date() }) {
-  const date = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(at);
-  const timestamp = now();
-  db.prepare(`
-    INSERT INTO inbox_classifier_usage(
-      usage_date, rule_calls, ai_calls, input_chars, output_chars, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(usage_date) DO UPDATE SET
-      rule_calls=rule_calls+excluded.rule_calls,
-      ai_calls=ai_calls+excluded.ai_calls,
-      input_chars=input_chars+excluded.input_chars,
-      output_chars=output_chars+excluded.output_chars,
-      updated_at=excluded.updated_at
-  `).run(
-    date, classifier === "rules" ? 1 : 0, classifier === "ai" ? 1 : 0,
-    String(input).length, String(output).length, timestamp,
-  );
-}
-
-export function inboxClassifierUsage(date = null) {
-  const usageDate = date || new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
-  return db.prepare("SELECT * FROM inbox_classifier_usage WHERE usage_date=?").get(usageDate) || {
-    usage_date: usageDate, rule_calls: 0, ai_calls: 0, input_chars: 0, output_chars: 0,
-  };
 }

@@ -18,7 +18,6 @@ import { sendMessage, telegram } from "../../telegram.mjs";
 import { sendStatus } from "../../report.mjs";
 import { HOUSING_BASE_INSTRUCTION } from "./instructions.mjs";
 import {
-  proposeExplicitRule,
   ruleProposalKeyboard,
   ruleProposalMessage,
   saveInterpretedFeedback,
@@ -69,7 +68,7 @@ export function createHousingBotModule() {
   canHandleMessage(_message, context) {
     const semantic = context?.semantic;
     return ["housing_status", "housing_guide"].includes(semantic?.route)
-      || (["feedback", "feedback_undo", "preference_rule", "housing_result", "housing_announcement_date"].includes(semantic?.route)
+      || (["feedback", "feedback_undo", "housing_result", "housing_announcement_date"].includes(semantic?.route)
         && semantic?.domain === "housing");
   },
 
@@ -136,25 +135,6 @@ export function createHousingBotModule() {
       await sendMessage(rules.length
         ? `🏠 적용 중인 추가 지침\n\n${rules.map((rule) => `${rule.id}. ${rule.instruction}`).join("\n")}`
         : "현재 적용 중인 추가 지침이 없습니다.");
-      return true;
-    }
-    if (semantic?.route === "preference_rule" && semantic.domain === "housing") {
-      if (semantic.ruleKind !== "exclude_keyword" || !semantic.ruleKeyword) {
-        await sendMessage("적용할 주거 제외 기준을 조금 더 구체적으로 알려 주세요.");
-        return true;
-      }
-      const existing = listHousingRules().find((item) => item.kind === semantic.ruleKind && item.keyword === semantic.ruleKeyword);
-      if (existing) {
-        await sendMessage(`이미 적용 중인 지침입니다: ${existing.instruction}`);
-        return true;
-      }
-      const proposal = proposeExplicitRule({
-        domain: "housing", kind: semantic.ruleKind, keyword: semantic.ruleKeyword,
-        instruction: semantic.preference || text,
-      });
-      await sendMessage(ruleProposalMessage(proposal, "다음 주택 수집부터 해당 키워드 공고 제외"), {
-        reply_markup: ruleProposalKeyboard(proposal),
-      });
       return true;
     }
     if (["housing_status", "status"].includes(commandName(text)) || semantic?.route === "housing_status") {

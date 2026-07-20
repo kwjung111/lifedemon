@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.16.0 - 2026-07-21
+
+### Changed
+
+- Unified all free-form Telegram intent, target, feedback, Inbox, reminder, tracking, navigation, and manager routing into one bounded structured AI interpretation call.
+- Kept fixed slash commands and callback protocols deterministic and removed per-module semantic parsers and regex fallbacks.
+- Consolidated recommendation-list execution into the briefing app and documented the AI/code responsibility boundary.
+
+### Fixed
+
+- Prevented low-confidence or unavailable interpretation from mutating state, while retaining reply context and concise clarification.
+
 ## 1.15.0 - 2026-07-21
 
 ### Added

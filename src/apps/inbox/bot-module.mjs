@@ -167,7 +167,7 @@ export function createInboxBotModule({
           nextAction: semantic.nextAction || "내용 확인",
           assumptions: semantic.assumptions,
           attachment,
-          classifier: "global-ai",
+          interpretedBy: "global-ai",
           sourceMessageId: message.message_id,
         });
         await send(itemMessage(item), {}, {

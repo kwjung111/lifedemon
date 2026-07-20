@@ -25,7 +25,6 @@ process.env.JOB_USER_PROFILE_FILE = jobProfile;
 process.env.JOB_COMPANY_VERIFICATION_FILE = companies;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
-process.env.FEEDBACK_AI_ENABLED = "false";
 
 let telegramMessageId = 1200;
 globalThis.fetch = async () => ({
@@ -48,6 +47,7 @@ const {
 const {
   formatMorningBriefing, morningBriefingSnapshot, sendMorningBriefing, sendMoreRecommendations,
 } = await import("../src/apps/briefing/report.mjs");
+const { briefingBotModule } = await import("../src/apps/briefing/bot-module.mjs");
 const { jobsBotModule } = await import("../src/apps/jobs/bot-module.mjs");
 const { createInboxItem } = await import("../src/apps/inbox/store.mjs");
 
@@ -148,10 +148,18 @@ test("shows only the remaining housing recommendations on request", async () => 
   assert.equal(context.items[0].domain, "housing");
 });
 
+test("executes globally interpreted recommendation navigation in the briefing app", async () => {
+  const context = { semantic: { route: "recommendations_list", domain: "jobs" } };
+  assert.equal(briefingBotModule.canHandleMessage({}, context), true);
+  assert.equal(await briefingBotModule.handleMessage({ text: "채용 다 보여줘" }, context), true);
+  const row = platformDb.prepare("SELECT context_json FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
+  assert.equal(JSON.parse(row.context_json).domain, "jobs");
+});
+
 test("keeps Inbox actions replyable without adding action buttons", async () => {
   const inbox = createInboxItem({
     kind: "task", title: "보험 갱신", nextAction: "보험사 전화",
-    classifier: "rules", sourceMessageId: 9901,
+    sourceMessageId: 9901,
   });
   setPlatformSetting("morning_briefing_housing_signature", "");
   setPlatformSetting("morning_briefing_jobs_signature", "");
@@ -168,7 +176,7 @@ test("keeps Inbox actions replyable without adding action buttons", async () => 
 test("does not repeat an Inbox event that already has the same approved reminder", () => {
   const inbox = createInboxItem({
     kind: "event", title: "중복 방지 일정", nextAction: "참석",
-    eventAt: "2026-07-21T06:00:00.000Z", classifier: "rules", sourceMessageId: 9902,
+    eventAt: "2026-07-21T06:00:00.000Z", sourceMessageId: 9902,
   });
   const reminder = createReminder({
     title: inbox.title, dueAt: inbox.event_at, module: "global", entityKey: `inbox:${inbox.id}`,
