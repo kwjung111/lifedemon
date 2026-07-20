@@ -111,7 +111,10 @@ export const jobsBotModule = {
       source: job.source,
       metadata: { previousApplicationStatus },
     });
-    if (!feedback) return false;
+    if (!feedback) {
+      await sendMessage("공고 연결은 확인했습니다. ‘1번 괜찮네’, ‘1번 별로야’, ‘1번 지원했어’처럼 번호와 행동을 함께 적어 주세요.");
+      return true;
+    }
     if (ignoredWords.test(text)) {
       setJobApplication(job.id, "ignored");
       if (feedback.proposal) {

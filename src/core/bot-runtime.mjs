@@ -5,6 +5,7 @@ export function createBotRuntime({
   modules,
   loadOffset,
   saveOffset,
+  log = console.log,
 }) {
   const allowedChat = String(allowedChatId);
 
@@ -30,6 +31,11 @@ export function createBotRuntime({
     if (String(message.chat?.id || "") !== allowedChat) return;
     const text = String(message.text || "").trim();
     if (!text) return;
+    const routeMeta = {
+      messageId: message.message_id || null,
+      replyToMessageId: message.reply_to_message?.message_id || null,
+      itemNumber: Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0) || null,
+    };
 
     if (/^\/help(?:@\w+)?$/i.test(text)) {
       const help = modules.map((module) => module.help).filter(Boolean).join("\n\n");
@@ -38,7 +44,19 @@ export function createBotRuntime({
     }
 
     for (const module of modules) {
-      if (await module.handleMessage(message)) return;
+      if (await module.handleMessage(message)) {
+        log("Telegram message routed", { ...routeMeta, module: module.id });
+        return;
+      }
+    }
+    log("Telegram message unhandled", routeMeta);
+    if (routeMeta.itemNumber && !routeMeta.replyToMessageId) {
+      await sendMessage("공고 번호는 브리핑마다 다시 시작합니다. 공고 목록 말풍선을 왼쪽으로 밀어 ‘답장’을 선택한 뒤 같은 문장을 보내 주세요.");
+      return;
+    }
+    if (routeMeta.replyToMessageId) {
+      await sendMessage("답장한 메시지가 저장된 공고 브리핑과 연결되지 않았습니다. 번호가 붙은 공고 목록 말풍선 자체에 답장해 주세요.");
+      return;
     }
     await sendMessage("어떤 알림에 대한 요청인지 확인하지 못했습니다. /help를 보내 사용법을 확인해 주세요.");
   }
@@ -66,5 +84,5 @@ export function createBotRuntime({
     }
   }
 
-  return { run };
+  return { run, handleMessage, handleCallback };
 }

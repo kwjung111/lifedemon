@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1 - 2026-07-20
+
+### Fixed
+
+- Unhandled numbered messages now explain that Telegram's actual reply gesture is required instead of returning the generic help fallback.
+- Replies connected to a job digest but containing an unknown action now show concrete supported examples.
+- Telegram routing logs retain only message IDs, reply IDs, item numbers, and the handling module so reply failures can be diagnosed without logging message text.
+
 ## 1.8.0 - 2026-07-20
 
 ### Added
