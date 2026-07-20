@@ -1,5 +1,5 @@
 import { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } from "./company-verification.mjs";
-import { appliedJobs, jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
+import { appliedJobs, getJobSetting, jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
 
@@ -9,15 +9,30 @@ function assessmentFor(row) { try { return JSON.parse(row.result_json); } catch 
 const escapeHtml = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const link = (url) => `<a href="${escapeHtml(url)}">링크</a>`;
 
-function buildJobReportPages(collection = [], { limit = 100 } = {}) {
+function healthTime(value) {
+  if (!value) return "아직 없음";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "확인 필요";
+  return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
+}
+
+function buildJobReportPages(collection = [], { limit = 100, filtering = [], verification = null } = {}) {
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const summary = jobAssessmentSummary(jobProfileFingerprint(profile), companyVerificationFingerprint(verifications), limit);
   const applications = appliedJobs();
   const collectionLine = collection.length ? collection.map((entry) => `${sourceLabel[entry.source] || entry.source} ${entry.error ? "오류" : entry.count}`).join(" · ") : "수집 결과 없음";
+  const newCount = collection.reduce((total, item) => total + (item.newCount || 0), 0);
+  const changedCount = collection.reduce((total, item) => total + (item.changedCount || 0), 0);
+  const deactivatedCount = collection.reduce((total, item) => total + (item.deactivatedCount || 0), 0);
+  const collectionErrors = collection.filter((item) => item.error).length;
+  const filteringErrors = filtering.filter((item) => item.error).length;
+  const verificationErrors = verification?.results?.filter((item) => item.error).length || 0;
   const header = [
     `💼 채용 공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     `수집: ${collectionLine}`,
+    `품질: 신규 ${newCount} · 변경 ${changedCount} · 종료 ${deactivatedCount} · 오류 ${collectionErrors + filteringErrors + verificationErrors}`,
+    `마지막 정상 수집: ${healthTime(getJobSetting("job_collection_last_success_at"))}`,
     `판정: 적합 ${summary.counts.pass || 0} · 확인 ${summary.counts.uncertain || 0} · 제외 ${summary.counts.exclude || 0}`,
     `지원 추적: ${applications.length}건`,
   ];

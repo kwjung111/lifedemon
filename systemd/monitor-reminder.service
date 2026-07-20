@@ -2,6 +2,7 @@
 Description=Monitor platform reminder worker
 After=network-online.target
 Wants=network-online.target
+OnFailure=monitor-failure-notify@%n.service
 
 [Service]
 Type=simple

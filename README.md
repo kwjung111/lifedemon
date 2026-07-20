@@ -21,7 +21,8 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - Node.js 22 이상
 - Playwright Chromium
 - Telegram bot token
-- 자연어 리마인더 사용 시 OpenAI API key
+- 자연어 리마인더 및 Wanted 검색용 서버 Codex CLI 로그인
+- 선택 사항: Codex 사용량·인증 오류 시 사용할 API fallback key
 
 ## Setup
 
@@ -37,12 +38,16 @@ cp .env.example .env
 
 ```bash
 npm run bot
-npm run reminders
+npm run calendar:sync
 npm run housing:daily
 npm run jobs:collect
 npm run jobs:filter
 npm run jobs:daily
 ```
+
+상시 Telegram gateway와 reminder worker, 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 서버가 예약 시각에 꺼져 있어도 부팅 후 누락 실행을 보충합니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다.
+
+주거·채용 일일 리포트에는 소스별 원본 수집 건수, 신규·변경·종료·오류 건수와 마지막 정상 수집 시각이 포함됩니다.
 
 ## Job notices
 

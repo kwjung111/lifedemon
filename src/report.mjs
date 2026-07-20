@@ -1,9 +1,16 @@
-import { activeNotices, appliedNotices, exhaustedReviewCount, saveDigestItems } from "./db.mjs";
+import { activeNotices, appliedNotices, exhaustedReviewCount, getSetting, saveDigestItems } from "./db.mjs";
 import { scoreLabel } from "./apps/housing/scoring.mjs";
 import { sendMessage } from "./telegram.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
 const sourceOrder = ["마이홈 API", "청년안심주택", "HUG"];
+
+function healthTime(value) {
+  if (!value) return "아직 없음";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "확인 필요";
+  return date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
+}
 
 function dday(date) {
   if (!date) return "발표일 미확인";
@@ -48,10 +55,16 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     const item = summary.find((entry) => entry.source === source);
     return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
   }).join(" · ");
+  const newCount = summary.reduce((total, item) => total + (item.newCount || 0), 0);
+  const changedCount = summary.reduce((total, item) => total + (item.changedCount || 0), 0);
+  const deactivatedCount = summary.reduce((total, item) => total + (item.deactivatedCount || 0), 0);
+  const collectionErrors = summary.filter((item) => item.error || item.skipped).length;
 
   const lines = [
     `🏠 서울 1인 청년 주거공고 · ${new Date().toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })}`,
     `수집: ${counts}`,
+    `품질: 신규 ${newCount} · 변경 ${changedCount} · 종료 ${deactivatedCount} · 오류 ${collectionErrors}`,
+    `마지막 정상 수집: ${healthTime(getSetting("housing_collection_last_success_at"))}`,
     `후보 ${allCandidates.length}건 · 지원 진행 ${applied.length}건`,
     reviewSummary.length
       ? `AI 검토 ${completedReviews}건 · 오류 ${failedReviews}건${deferredReviews ? ` · 다음 실행 ${deferredReviews}건` : ""}`

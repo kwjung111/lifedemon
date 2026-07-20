@@ -9,5 +9,5 @@ const verification = await verifyActiveJobCompanies();
 console.log("job company verification", verification);
 const filtering = await filterJobs();
 console.log("job filtering", filtering);
-await sendJobReport(collection);
+await sendJobReport(collection, { filtering, verification });
 console.log("job report sent");

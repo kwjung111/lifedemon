@@ -2,6 +2,7 @@
 Description=Daily Seoul housing notice crawl and Telegram report
 After=network-online.target
 Wants=network-online.target
+OnFailure=monitor-failure-notify@%n.service
 
 [Service]
 Type=oneshot

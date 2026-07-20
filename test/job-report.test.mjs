@@ -15,7 +15,7 @@ process.env.TELEGRAM_CHAT_ID = "1";
 writeFileSync(profileFile, JSON.stringify({ preferences: { preferredRoles: ["devops"], excludedRoles: ["backend"] }, companyFilters: { jobplanet: { minimumRating: 2.5, excludeWhenMissing: true }, minimumEmployeeCount: 11 } }));
 writeFileSync(companyFile, JSON.stringify([]));
 
-const { appliedJobs, jobDb, saveJobAssessment, setJobApplication, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
+const { appliedJobs, jobDb, saveJobAssessment, setJobApplication, upsertJobPosting, upsertJobPostingWithStatus } = await import("../src/apps/jobs/db.mjs");
 const { formatJobApplicationStatus, formatJobReport, formatJobReportPages } = await import("../src/apps/jobs/report.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
@@ -23,11 +23,19 @@ const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs
 test.after(() => { jobDb.close(); rmSync(dataDir, { recursive: true, force: true }); });
 
 test("reports strict verification status without exposing private profile", () => {
-  const report = formatJobReport([{ source: "remember", count: 38 }, { source: "wanted", error: "session needed" }]);
+  const report = formatJobReport([{ source: "remember", count: 38, newCount: 2, changedCount: 1, deactivatedCount: 3 }, { source: "wanted", error: "session needed" }]);
   assert.match(report, /리멤버 38/);
   assert.match(report, /원티드 오류/);
   assert.match(report, /회사 검증 데이터가 아직 없어/);
   assert.doesNotMatch(report, /backend|devops/i);
+  assert.match(report, /품질: 신규 2 · 변경 1 · 종료 3 · 오류 1/);
+});
+
+test("classifies new, unchanged, and changed jobs for collection telemetry", () => {
+  const fixture = { source: "wanted", company: "계측회사", title: "Platform Engineer", url: "https://www.wanted.co.kr/wd/9901", rawText: "AWS" };
+  assert.equal(upsertJobPostingWithStatus(fixture).change, "new");
+  assert.equal(upsertJobPostingWithStatus(fixture).change, "unchanged");
+  assert.equal(upsertJobPostingWithStatus({ ...fixture, rawText: "AWS Kubernetes" }).change, "changed");
 });
 
 test("excludes jobs recorded as applied from later reports", () => {

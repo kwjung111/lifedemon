@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import { listHousingRules, markSourceCollectionComplete, upsertNotice } from "./db.mjs";
+import { listHousingRules, markSourceCollectionComplete, setSetting, upsertNoticeWithStatus } from "./db.mjs";
 import { classify, extractDates } from "./classify.mjs";
 import { collectMyHomeApi } from "./myhome-api.mjs";
 
@@ -110,18 +110,28 @@ export async function collectAll() {
   try {
     try {
       const api = await collectMyHomeApi(rules);
-      const activeIds = api.notices.map((notice) => upsertNotice(notice));
-      if (!api.skipped) markSourceCollectionComplete("마이홈 API", activeIds);
-      summary.push({ source: "마이홈 API", count: api.notices.length, skipped: api.skipped || undefined });
+      const changes = api.notices.map((notice) => upsertNoticeWithStatus(notice));
+      const deactivatedCount = api.skipped ? 0 : markSourceCollectionComplete("마이홈 API", changes.map(({ id }) => id));
+      summary.push({
+        source: "마이홈 API", count: api.notices.length,
+        newCount: changes.filter(({ change }) => change === "new").length,
+        changedCount: changes.filter(({ change }) => change === "changed").length,
+        deactivatedCount, skipped: api.skipped || undefined,
+      });
     } catch (error) {
       summary.push({ source: "마이홈 API", count: 0, error: error.message });
     }
     for (const source of sources) {
       try {
         const notices = await collectSource(context, source, rules);
-        const activeIds = notices.map((notice) => upsertNotice(notice));
-        markSourceCollectionComplete(source.name, activeIds);
-        summary.push({ source: source.name, count: notices.length });
+        const changes = notices.map((notice) => upsertNoticeWithStatus(notice));
+        const deactivatedCount = markSourceCollectionComplete(source.name, changes.map(({ id }) => id));
+        summary.push({
+          source: source.name, count: notices.length,
+          newCount: changes.filter(({ change }) => change === "new").length,
+          changedCount: changes.filter(({ change }) => change === "changed").length,
+          deactivatedCount,
+        });
       } catch (error) {
         summary.push({ source: source.name, count: 0, error: error.message });
       }
@@ -129,6 +139,11 @@ export async function collectAll() {
     }
   } finally {
     await browser.close();
+  }
+  const completedAt = new Date().toISOString();
+  setSetting("housing_collection_last_attempt_at", completedAt);
+  if (summary.every((entry) => !entry.error && !entry.skipped)) {
+    setSetting("housing_collection_last_success_at", completedAt);
   }
   return summary;
 }

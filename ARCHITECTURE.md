@@ -48,7 +48,9 @@ Reminder links are optional. Domain events may attach a resolver and structured 
 
 Google Calendar integration is optional and remains inside the reminder worker. A dedicated calendar is synchronized in both directions through the Google Calendar REST API: approved/cancelled global reminders are pushed to Google, and Google event creates/updates/deletes are applied to `platform.sqlite`. OAuth credentials are supplied only through the private environment file. When they are absent or the feature flag is off, reminder behavior is unchanged.
 
-Natural-language Telegram reminder requests are routed to a tool-free OpenAI Structured Outputs call only when reminder intent is detected. The JSON Schema output must ask for clarification when an exact date or time is missing. The model has no shell or filesystem access, the existing approval callback remains the write boundary, and the strict `/remind` syntax bypasses AI entirely.
+Natural-language Telegram reminder requests are routed to the shared structured Codex runner only when reminder intent is detected. It runs an ephemeral Codex CLI process in a temporary directory with a read-only sandbox, a strict JSON schema, and a minimal sanitized environment. The schema output must ask for clarification when an exact date or time is missing. The existing approval callback remains the write boundary, and the strict `/remind` syntax bypasses AI entirely.
+
+Daily collectors retain lightweight operational telemetry in each app database: the last attempt and successful collection times plus per-run new, changed, deactivated, and failed counts. Telegram digests expose this health summary. systemd timers are persistent so a reboot catches a missed weekday run, and every production service routes terminal failures to a Telegram notifier that redacts common credential patterns before including recent logs.
 
 ## Codex authentication fallback
 

@@ -272,7 +272,7 @@ export function noticeId(source, url, title) {
   return createHash("sha256").update(`${source}\n${url}\n${title}`).digest("hex").slice(0, 24);
 }
 
-export function upsertNotice(notice) {
+export function upsertNoticeWithStatus(notice) {
   const id = notice.id || noticeId(notice.source, notice.url, notice.title);
   const timestamp = now();
   const rawText = (notice.rawText || "").slice(0, 50000);
@@ -310,7 +310,14 @@ export function upsertNotice(notice) {
         claim_token=NULL, updated_at=excluded.updated_at
     `).run(id, previous ? "changed" : "new", fingerprint, timestamp, timestamp);
   }
-  return id;
+  return {
+    id,
+    change: !previous ? "new" : previous.content_hash !== contentHash ? "changed" : "unchanged",
+  };
+}
+
+export function upsertNotice(notice) {
+  return upsertNoticeWithStatus(notice).id;
 }
 
 export function markSourceCollectionComplete(source, activeIds) {

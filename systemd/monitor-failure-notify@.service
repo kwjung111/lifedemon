@@ -1,0 +1,16 @@
+[Unit]
+Description=Send Telegram alert for failed Life Daemon unit %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=15min
+StartLimitBurst=1
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/data/crawler
+EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
+ExecStart=/usr/local/bin/node --no-network-family-autoselection /data/crawler/src/admin/notify-systemd-failure.mjs %i
+TimeoutStartSec=45s
+NoNewPrivileges=true
+PrivateTmp=true

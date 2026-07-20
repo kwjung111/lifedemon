@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.5 - 2026-07-20
+
+### Added
+
+- Housing and job digests now report new, changed, deactivated, and failed collection counts together with the last successful collection time.
+- Production service failures now send a rate-limited Telegram alert containing redacted status and recent log context.
+
+### Changed
+
+- Weekday housing and job timers now catch up after server downtime instead of silently missing the scheduled run.
+- Runtime documentation now reflects Codex CLI authentication, current commands, operational telemetry, and failure handling.
+
+### Removed
+
+- Removed the unused legacy `src/state.mjs` database module.
+
 ## 1.2.4 - 2026-07-19
 
 ### Added

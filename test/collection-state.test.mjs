@@ -6,7 +6,7 @@ import test from "node:test";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-collection-"));
 process.env.HOUSING_DATA_DIR = dataDir;
-const { db, exhaustedReviewCount, markSourceCollectionComplete, upsertNotice } = await import("../src/db.mjs");
+const { db, exhaustedReviewCount, markSourceCollectionComplete, upsertNotice, upsertNoticeWithStatus } = await import("../src/db.mjs");
 
 function notice(id, source = "마이홈 API") {
   return {
@@ -50,4 +50,14 @@ test("counts active reviews that exhausted all retries", () => {
   db.prepare("UPDATE review_queue SET state='error', attempts=3 WHERE notice_id='failed-a'").run();
 
   assert.equal(exhaustedReviewCount(), 1);
+});
+
+test("classifies new, unchanged, and changed notices for collection telemetry", () => {
+  const first = upsertNoticeWithStatus(notice("telemetry-a"));
+  const unchanged = upsertNoticeWithStatus(notice("telemetry-a"));
+  const changed = upsertNoticeWithStatus({ ...notice("telemetry-a"), rawText: "updated fixture" });
+
+  assert.equal(first.change, "new");
+  assert.equal(unchanged.change, "unchanged");
+  assert.equal(changed.change, "changed");
 });

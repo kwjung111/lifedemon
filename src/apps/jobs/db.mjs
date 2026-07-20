@@ -44,7 +44,7 @@ const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 const hashFor = (job) => createHash("sha256").update(JSON.stringify({ company: clean(job.company), title: clean(job.title), url: job.url, raw: clean(job.rawText) })).digest("hex").slice(0, 32);
 export const jobId = (source, url) => createHash("sha256").update(`${source}\n${url}`).digest("hex").slice(0, 24);
 
-export function upsertJobPosting(job) {
+export function upsertJobPostingWithStatus(job) {
   if (!job?.source || !job?.company || !job?.title || !job?.url) throw new Error("job posting needs source, company, title, and url");
   const id = job.id || jobId(job.source, job.url);
   const timestamp = now();
@@ -66,13 +66,28 @@ export function upsertJobPosting(job) {
       ON CONFLICT(posting_id) DO UPDATE SET state='pending', reason=excluded.reason, attempts=0, last_error=NULL, updated_at=excluded.updated_at
     `).run(id, previous ? "changed" : "new", timestamp, timestamp);
   }
-  return id;
+  return {
+    id,
+    change: !previous ? "new" : previous.content_hash !== contentHash ? "changed" : "unchanged",
+  };
+}
+
+export function upsertJobPosting(job) {
+  return upsertJobPostingWithStatus(job).id;
 }
 
 export function markJobSourceComplete(source, activeIds) {
   const ids = [...new Set(activeIds)];
   if (!ids.length) return 0; // A zero-result scrape is not proof that every posting closed.
   return jobDb.prepare(`UPDATE job_postings SET active=0 WHERE source=? AND id NOT IN (${ids.map(() => "?").join(",")})`).run(source, ...ids).changes;
+}
+
+export function getJobSetting(key, fallback = null) {
+  return jobDb.prepare("SELECT value FROM job_settings WHERE key=?").get(key)?.value ?? fallback;
+}
+
+export function setJobSetting(key, value) {
+  jobDb.prepare("INSERT INTO job_settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, String(value));
 }
 
 export function pendingJobFilters(limit = 100) {
