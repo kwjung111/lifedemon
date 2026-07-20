@@ -46,6 +46,21 @@ npm run jobs:filter
 npm run jobs:daily
 ```
 
+## Life Daemon operations assistant
+
+The existing Telegram gateway includes a read-only operations assistant. Use
+`/daemon` for a concise overall health report, or `/ask <question>` for natural
+Korean questions. Common questions may also be sent without a command, such as
+`채용공고 우선순위가 어떻게 돼?` or `수집이 마지막으로 언제 돌았지?`.
+
+Answers are grounded in a bounded snapshot containing private preference files,
+application state, collection telemetry, reminders, Calendar health, and a
+fixed allowlist of systemd units. Common health and priority questions are
+formatted directly without AI. More complex questions use a tool-free
+structured Codex request; user text can neither execute commands nor write to a
+database. Mutating operational actions are intentionally not exposed through
+this interface.
+
 ## Housing result feedback
 
 `housing-result-check.timer` checks due applications hourly on weekdays. When an

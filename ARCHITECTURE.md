@@ -14,6 +14,8 @@ Life Daemon is a personal automation platform, not a single-purpose housing bot.
 
 Each app owns its sources, classification rules, database tables, digest formatting, and user actions. Apps must namespace Telegram callback data (`h:` for housing, `j:` for jobs) so one gateway can safely route both.
 
+The manager app is a read-only cross-domain projection. It gathers a bounded snapshot from app-owned query APIs, private profiles, Calendar/reminder state, and a fixed systemd unit allowlist. Deterministic formatters answer common priority, collection, and health questions immediately. Other natural-language questions go through the shared tool-free Structured Outputs runner. Model output can explain snapshot facts but cannot select commands, execute tools, or mutate app state.
+
 Housing has a version-controlled base instruction in `src/apps/housing/instructions.mjs`. User rules are stored as structured records in `housing.sqlite`; they are never treated as executable code. Only supported rule types affect collection, which keeps Telegram input from changing arbitrary server behavior.
 
 Housing discovery is a thin completeness sensor. New or changed likely/possible notices enter `review_queue`. The AI reviewer reads untrusted official content as evidence, may request up to two follow-ups, and the orchestrator fulfills those requests only through an HTTPS official-domain allowlist. Missing critical fields force a title-based official detail search even when the model does not request one. Structured reviews and content hashes are retained in SQLite; unchanged notices do not consume another AI call.

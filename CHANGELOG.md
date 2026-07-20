@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 - 2026-07-20
+
+### Added
+
+- Added a read-only Life Daemon operations assistant to the existing Telegram bot through `/daemon`, `/ask`, and natural Korean questions.
+- The assistant can explain private job priorities, current recommendations, collection attempt/success times, next systemd timer runs, housing applications/results, reminders, Calendar health, and service state from a bounded snapshot.
+- Common priority, collection, and health questions use deterministic formatters; other questions use a tool-free structured Codex request with the existing authenticated-login and API fallback policy.
+
+### Security
+
+- Natural-language questions cannot execute shell commands or mutate databases. systemd access is limited in code to a fixed read-only unit allowlist, and secrets and raw environment data are excluded from the model snapshot.
+
 ## 1.3.0 - 2026-07-20
 
 ### Added
