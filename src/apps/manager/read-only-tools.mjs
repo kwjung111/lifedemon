@@ -15,6 +15,7 @@ const repoPath = "/data/crawler";
 export const diagnosticUnits = [
   "monitor-telegram-bot.service",
   "monitor-reminder.service",
+  "monitor-telegram-outbox.service",
   "housing-daily.service",
   "housing-daily.timer",
   "housing-result-check.service",
@@ -114,6 +115,8 @@ function databaseHealth(domain) {
   return {
     quickCheck: quickCheck(platformDb),
     reminders: grouped(platformDb, "reminders", "status"),
+    telegramOutbox: grouped(platformDb, "telegram_outbox", "status"),
+    oldestPendingTelegram: platformDb.prepare("SELECT created_at, attempts, last_error FROM telegram_outbox WHERE status IN ('pending','sending','failed') ORDER BY id LIMIT 1").get() || null,
     calendarErrors: platformDb.prepare("SELECT title, calendar_sync_error, updated_at FROM reminders WHERE calendar_sync_error IS NOT NULL ORDER BY updated_at DESC LIMIT 5").all(),
   };
 }

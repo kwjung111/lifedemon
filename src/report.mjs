@@ -150,7 +150,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     currentPage.lines.push(...block);
     currentPage.notices.push(notice);
   }
-  for (const page of pages) {
+  for (const [pageIndex, page] of pages.entries()) {
     page.lines.push("", "※ 자격·공식 근거가 불확실한 점수는 ‘(추정)’으로 표시합니다.");
     page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 별로야’, ‘3번 2026-08-10 발표’");
     const keyboard = page.notices.map((notice, index) => [
@@ -159,7 +159,14 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     ]);
     const message = await sendMessage(page.lines.join("\n").slice(0, 4090), {
       reply_markup: { inline_keyboard: keyboard },
+    }, {
+      dedupeKey: `housing-daily:${today}:${pageIndex + 1}`,
+      context: {
+        domain: "housing",
+        kind: "digest",
+        items: page.notices.map((notice, index) => ({ index: index + 1, id: notice.id })),
+      },
     });
-    saveDigestItems(message.message_id, page.notices.map((notice) => notice.id));
+    if (message?.message_id) saveDigestItems(message.message_id, page.notices.map((notice) => notice.id));
   }
 }

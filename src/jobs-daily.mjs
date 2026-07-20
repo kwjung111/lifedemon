@@ -9,5 +9,8 @@ const verification = await verifyActiveJobCompanies();
 console.log("job company verification", verification);
 const filtering = await filterJobs();
 console.log("job filtering", filtering);
-await sendJobReport(collection, { filtering, verification });
+const kstDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(new Date());
+await sendJobReport(collection, { filtering, verification, deliveryKey: `jobs-daily:${kstDate}` });
 console.log("job report sent");

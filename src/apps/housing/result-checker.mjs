@@ -75,8 +75,12 @@ export async function runHousingResultChecks({
               ]],
             },
           },
+          {
+            dedupeKey: `housing-result:${notice.id}:document`,
+            context: { domain: "housing", kind: "item", entityId: notice.id },
+          },
         );
-        saveTelegramMessage(message.message_id, notice.id);
+        if (message?.message_id) saveTelegramMessage(message.message_id, notice.id);
         markApplicationResultPrompted(notice.id);
       }
       results.push({ id: notice.id, found: Boolean(discovered.found), prompted: Boolean(discovered.found && !check.prompted_at) });

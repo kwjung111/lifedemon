@@ -23,6 +23,7 @@ import {
   listFeedbackRules,
   listReminders,
   recentFeedbackEvents,
+  telegramOutboxHealth,
 } from "../../core/state.mjs";
 import { calendarSyncStatus } from "../../integrations/google-calendar.mjs";
 
@@ -31,6 +32,7 @@ const packageJson = JSON.parse(readFileSync(new URL("../../../package.json", imp
 export const managedUnits = [
   "monitor-telegram-bot.service",
   "monitor-reminder.service",
+  "monitor-telegram-outbox.service",
   "housing-daily.timer",
   "housing-result-check.timer",
   "jobs-daily.timer",
@@ -177,6 +179,7 @@ export function buildSystemSnapshot({ now = new Date(), systemctl = defaultSyste
         domain, entityId: entity_id, signal, subjectType: subject_type, subjectValue: subject_value, createdAt: created_at,
       })),
     },
+    telegramOutbox: telegramOutboxHealth(),
     services: serviceSnapshot(systemctl),
   };
 }

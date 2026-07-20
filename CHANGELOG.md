@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.8.0 - 2026-07-20
+
+### Added
+
+- Added a durable SQLite-backed Telegram outbox with retry scheduling, delivery deduplication, delayed reply context, and a dedicated recovery worker.
+- Added natural feedback undo. `방금 거 취소` reverts the latest feedback, while a numbered reply such as `1번 관심없음 취소` targets one digest item and restores its prior application state.
+- Applying to a housing notice now extracts its official result date and time and proposes a global reminder. Exact job interview or result times embedded in a posting use the same flow.
+- Housing follow-up reminders resolve the official result link dynamically at delivery time for supported official sources.
+
+### Changed
+
+- The Telegram client now disables network-family autoselection in code and prefers IPv4, so manual Node invocations retain the production connectivity workaround.
+- Daily housing/job digests, reminder delivery, and housing-result prompts use stable delivery keys where duplicate suppression is required.
+- Undoing an application also cancels any still-pending or approved follow-up reminder created by that action.
+- `/ask` operational snapshots and diagnostics now expose Telegram outbox health and the dedicated outbox service.
+
 ## 1.7.0 - 2026-07-20
 
 ### Added

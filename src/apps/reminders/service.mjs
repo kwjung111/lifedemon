@@ -15,11 +15,13 @@ export function formatReminderTime(dueAt) {
   }).format(new Date(dueAt));
 }
 
-export async function proposeReminder(input) {
+export async function proposeReminder(input, { intro = null } = {}) {
   const reminder = createReminder(input);
   if (reminder.status === "approved" || reminder.status === "fired") return reminder;
   await sendMessage(
-    `🔔 이 알림을 등록할까요?\n\n[일시] ${formatReminderTime(reminder.due_at)}\n[내용] ${reminder.title}${
+    `${intro ? `${intro}\n\n` : ""}🔔 이 알림을 등록할까요?\n\n[일시] ${formatReminderTime(reminder.due_at)}\n[내용] ${reminder.title}${
+      input.metadata?.assumedTime ? "\n※ 공식 발표 시각이 없어 오전 9시 기준으로 제안합니다." : ""
+    }${
       reminder.resolver ? "\n링크: 알림 시점에 공식 사이트에서 자동 탐색"
         : reminder.url ? `\n링크: ${reminder.url}` : ""
     }`,
@@ -30,6 +32,15 @@ export async function proposeReminder(input) {
           { text: "취소", callback_data: `r:no:${reminder.id}` },
         ]],
       },
+    },
+    {
+      context: input.metadata?.noticeId || input.metadata?.entityId
+        ? {
+          domain: input.metadata.domain || (input.metadata.noticeId ? "housing" : input.module),
+          kind: "item",
+          entityId: input.metadata.noticeId || input.metadata.entityId,
+        }
+        : null,
     },
   );
   return reminder;

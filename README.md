@@ -38,6 +38,7 @@ cp .env.example .env
 
 ```bash
 npm run bot
+npm run telegram:outbox
 npm run calendar:sync
 npm run housing:daily
 npm run housing:results
@@ -67,6 +68,38 @@ feedback. Explicit positive job feedback modestly promotes later postings from
 the same company, but never overrides hard role or company-verification gates.
 Send `피드백 규칙 보여줘` to review active durable rules and delete one with a
 reply such as `J2 규칙 삭제` or `H3 규칙 삭제`.
+
+Feedback can be undone without another button. Send `방금 거 취소` to revert
+the latest active feedback, or reply to the original digest with text such as
+`1번 관심없음 취소`. The bot restores the item's previous application state;
+if the feedback created a durable exclusion rule, that linked rule is disabled
+as part of the same undo.
+
+## Reliable Telegram delivery
+
+Every outbound Telegram message is written to `platform.sqlite` before the API
+call. Network failures remain pending with exponential retry timing, and the
+independent `monitor-telegram-outbox.service` delivers them after connectivity
+recovers. A retry reuses the same outbox record, while scheduled digests and
+reminders also use stable delivery keys to avoid duplicate sends. Digest item
+context is retained with the outbox row, so numbered replies still work when a
+message was delivered later by the recovery worker.
+
+The client prefers IPv4 and disables Node network-family autoselection both in
+code and in systemd. Non-retryable Telegram request errors remain visible as
+failed outbox records for `/ask` diagnostics rather than looping forever.
+
+## Application follow-up reminders
+
+When `신청했어` or `지원했어` is recorded, the bot scans the stored official
+notice text for an exact result, interview, or selection schedule. A discovered
+schedule is proposed through the global reminder approval flow. Housing notices
+with a known result date but no official time are explicitly proposed for 09:00
+KST instead of silently inventing a time. At delivery, housing reminders search
+the official source for the result page and fall back to the original notice
+when no safe match exists. Public job postings rarely contain a personalized
+interview schedule, so the job flow proposes a reminder only when both date and
+time are actually present.
 
 ## Life Daemon operations assistant
 
@@ -118,7 +151,7 @@ If a public result contains no stable personal identifier, the bot deliberately
 does not guess whether the user was selected. The official-announcement check is
 automatic, while that private outcome requires one Telegram tap.
 
-상시 Telegram gateway와 reminder worker, 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 서버가 예약 시각에 꺼져 있어도 부팅 후 누락 실행을 보충합니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다.
+상시 Telegram gateway, durable outbox worker, reminder worker와 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 서버가 예약 시각에 꺼져 있어도 부팅 후 누락 실행을 보충합니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다.
 
 주거·채용 일일 리포트에는 소스별 원본 수집 건수, 신규·변경·종료·오류 건수와 마지막 정상 수집 시각이 포함됩니다.
 

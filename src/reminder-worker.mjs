@@ -20,6 +20,8 @@ while (true) {
             `⏰ 알림\n\n${reminder.title}\n시각: ${formatReminderTime(reminder.due_at)}${
               resolved.note ? `\n${resolved.note}` : ""
             }${resolved.url ? `\n\n확인: ${resolved.url}` : ""}`,
+            {},
+            { dedupeKey: `reminder:${reminder.id}` },
           );
           markReminderFired(reminder.id);
         }

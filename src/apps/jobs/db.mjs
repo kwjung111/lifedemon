@@ -208,6 +208,16 @@ export function setJobApplication(postingId, status = "applied", fields = {}) {
   return getJobPosting(postingId);
 }
 
+export function jobApplicationStatus(postingId) {
+  return jobDb.prepare("SELECT status FROM job_applications WHERE posting_id=?").get(postingId)?.status || null;
+}
+
+export function restoreJobApplicationStatus(postingId, status = null) {
+  if (!status) return jobDb.prepare("DELETE FROM job_applications WHERE posting_id=?").run(postingId).changes > 0;
+  setJobApplication(postingId, status);
+  return true;
+}
+
 export function appliedJobs() {
   const rows = jobDb.prepare(`
     SELECT p.*, ja.applied_at, ja.note, ja.updated_at AS application_updated_at

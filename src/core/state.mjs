@@ -71,6 +71,27 @@ db.exec(`
     created_at TEXT NOT NULL,
     UNIQUE(domain, kind, keyword)
   );
+
+  CREATE TABLE IF NOT EXISTS telegram_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    method TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    context_json TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    available_at TEXT NOT NULL,
+    claimed_at TEXT,
+    last_error TEXT,
+    result_json TEXT,
+    message_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    delivered_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS telegram_outbox_due
+  ON telegram_outbox(status, available_at);
 `);
 
 db.exec("BEGIN IMMEDIATE");
@@ -82,6 +103,9 @@ try {
   if (!reminderColumns.has("google_event_id")) db.exec("ALTER TABLE reminders ADD COLUMN google_event_id TEXT");
   if (!reminderColumns.has("calendar_synced_at")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_synced_at TEXT");
   if (!reminderColumns.has("calendar_sync_error")) db.exec("ALTER TABLE reminders ADD COLUMN calendar_sync_error TEXT");
+  const feedbackColumns = new Set(db.prepare("PRAGMA table_info(feedback_events)").all().map((column) => column.name));
+  if (!feedbackColumns.has("reverted_at")) db.exec("ALTER TABLE feedback_events ADD COLUMN reverted_at TEXT");
+  if (!feedbackColumns.has("revert_text")) db.exec("ALTER TABLE feedback_events ADD COLUMN revert_text TEXT");
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS reminders_google_event
     ON reminders(google_calendar_id, google_event_id)
@@ -132,8 +156,32 @@ export function recordFeedbackEvent({
 
 export function recentFeedbackEvents(limit = 20) {
   return db.prepare(`
-    SELECT * FROM feedback_events ORDER BY id DESC LIMIT ?
+    SELECT * FROM feedback_events WHERE reverted_at IS NULL ORDER BY id DESC LIMIT ?
   `).all(Math.max(1, Math.min(100, Number(limit) || 20)));
+}
+
+export function latestFeedbackEvent({ domain = null, entityId = null } = {}) {
+  return db.prepare(`
+    SELECT * FROM feedback_events
+    WHERE reverted_at IS NULL
+      AND (? IS NULL OR domain=?)
+      AND (? IS NULL OR entity_id=?)
+    ORDER BY id DESC LIMIT 1
+  `).get(domain, domain, entityId, entityId) || null;
+}
+
+export function revertFeedbackEvent(id, text = null) {
+  return db.prepare(`
+    UPDATE feedback_events SET reverted_at=?, revert_text=?
+    WHERE id=? AND reverted_at IS NULL
+  `).run(now(), text ? String(text).slice(0, 1000) : null, id).changes > 0;
+}
+
+export function feedbackRuleProposalForEvent(eventId) {
+  return db.prepare(`
+    SELECT * FROM feedback_rule_proposals
+    WHERE source_event_id=? ORDER BY id DESC LIMIT 1
+  `).get(eventId) || null;
 }
 
 export function createFeedbackRuleProposal({
@@ -190,6 +238,101 @@ export function disableFeedbackRule(id) {
   return db.prepare("UPDATE feedback_rules SET enabled=0 WHERE id=? AND enabled=1").run(id).changes > 0;
 }
 
+export function enqueueTelegramOutbox({ method, payload, dedupeKey, context = null }) {
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO telegram_outbox(
+      method, payload_json, dedupe_key, context_json, status,
+      available_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+    ON CONFLICT(dedupe_key) DO NOTHING
+  `).run(
+    method, JSON.stringify(payload), dedupeKey,
+    context ? JSON.stringify(context).slice(0, 20_000) : null,
+    timestamp, timestamp, timestamp,
+  );
+  return db.prepare("SELECT * FROM telegram_outbox WHERE dedupe_key=?").get(dedupeKey);
+}
+
+export function claimTelegramOutbox({ id = null, at = now(), staleBefore = null } = {}) {
+  const stale = staleBefore || new Date(Date.parse(at) - 5 * 60_000).toISOString();
+  db.prepare(`
+    UPDATE telegram_outbox
+    SET status='pending', claimed_at=NULL, available_at=?, updated_at=?
+    WHERE status='sending' AND claimed_at<=?
+  `).run(at, at, stale);
+  const row = id == null
+    ? db.prepare(`
+      SELECT * FROM telegram_outbox
+      WHERE status='pending' AND available_at<=?
+      ORDER BY id LIMIT 1
+    `).get(at)
+    : db.prepare("SELECT * FROM telegram_outbox WHERE id=? AND status='pending'").get(id);
+  if (!row) return null;
+  const claimed = db.prepare(`
+    UPDATE telegram_outbox
+    SET status='sending', attempts=attempts+1, claimed_at=?, updated_at=?
+    WHERE id=? AND status='pending'
+  `).run(at, at, row.id).changes;
+  return claimed ? db.prepare("SELECT * FROM telegram_outbox WHERE id=?").get(row.id) : null;
+}
+
+export function completeTelegramOutbox(id, result) {
+  const timestamp = now();
+  const messageId = Number.isFinite(Number(result?.message_id)) ? Number(result.message_id) : null;
+  db.prepare(`
+    UPDATE telegram_outbox
+    SET status='delivered', result_json=?, message_id=?, delivered_at=?,
+        claimed_at=NULL, last_error=NULL, updated_at=?
+    WHERE id=? AND status='sending'
+  `).run(JSON.stringify(result ?? null), messageId, timestamp, timestamp, id);
+  return db.prepare("SELECT * FROM telegram_outbox WHERE id=?").get(id);
+}
+
+export function rescheduleTelegramOutbox(id, error, delayMs = 30_000) {
+  const timestamp = now();
+  const availableAt = new Date(Date.now() + Math.max(1_000, delayMs)).toISOString();
+  db.prepare(`
+    UPDATE telegram_outbox
+    SET status='pending', available_at=?, claimed_at=NULL, last_error=?, updated_at=?
+    WHERE id=? AND status='sending'
+  `).run(availableAt, String(error || "Telegram delivery failed").slice(0, 1000), timestamp, id);
+}
+
+export function failTelegramOutbox(id, error) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE telegram_outbox
+    SET status='failed', claimed_at=NULL, last_error=?, updated_at=?
+    WHERE id=? AND status='sending'
+  `).run(String(error || "Telegram delivery failed").slice(0, 1000), timestamp, id);
+}
+
+export function getTelegramOutbox(id) {
+  return db.prepare("SELECT * FROM telegram_outbox WHERE id=?").get(id) || null;
+}
+
+export function telegramMessageContext(messageId) {
+  const row = db.prepare(`
+    SELECT context_json FROM telegram_outbox
+    WHERE status='delivered' AND message_id=? AND context_json IS NOT NULL
+    ORDER BY id DESC LIMIT 1
+  `).get(messageId);
+  if (!row) return null;
+  try { return JSON.parse(row.context_json); } catch { return null; }
+}
+
+export function telegramOutboxHealth() {
+  const counts = Object.fromEntries(db.prepare(`
+    SELECT status, COUNT(*) AS count FROM telegram_outbox GROUP BY status
+  `).all().map((row) => [row.status, row.count]));
+  const oldest = db.prepare(`
+    SELECT created_at, last_error FROM telegram_outbox
+    WHERE status IN ('pending', 'sending', 'failed') ORDER BY id LIMIT 1
+  `).get() || null;
+  return { counts, oldest };
+}
+
 export function acquireCalendarSyncLease(calendarId, owner, acquiredAt, expiresAt) {
   return db.prepare(`
     INSERT INTO calendar_sync_leases(calendar_id, owner, expires_at)
@@ -244,6 +387,14 @@ export function setReminderStatus(id, status) {
   return db.prepare(`
     UPDATE reminders SET status=?, updated_at=? WHERE id=?
   `).run(status, now(), id).changes > 0;
+}
+
+export function cancelRemindersForEntity(module, entityKeyPrefix) {
+  const timestamp = now();
+  return db.prepare(`
+    UPDATE reminders SET status='cancelled', updated_at=?
+    WHERE module=? AND entity_key LIKE ? AND status IN ('proposed', 'approved')
+  `).run(timestamp, module, `${entityKeyPrefix}%`).changes;
 }
 
 export function listReminders() {

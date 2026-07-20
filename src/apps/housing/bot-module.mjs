@@ -1,5 +1,6 @@
 import {
   getNotice,
+  housingApplicationStatus,
   applicationResult,
   applicationResultCheck,
   disableHousingRule,
@@ -23,6 +24,9 @@ import {
   saveEntityFeedback,
 } from "../feedback/service.mjs";
 import { recordFeedbackEvent } from "../../core/state.mjs";
+import { telegramMessageContext } from "../../core/state.mjs";
+import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
+import { proposeHousingApplicationFollowup } from "./application-followup.mjs";
 
 const appliedWords = /넣었|지원했|신청했|접수했/;
 const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래/;
@@ -36,6 +40,17 @@ function normalizedDate(text) {
 function callbackParts(data) {
   const parts = String(data || "").split(":");
   return parts[0] === "h" ? [parts[1], parts[2]] : [parts[0], parts[1]];
+}
+
+async function sendApplicationConfirmation(notice, intro) {
+  const reminder = await proposeHousingApplicationFollowup(notice, { intro });
+  if (reminder) return;
+  const confirmation = await sendMessage(
+    `${intro}\n\n발표 일정을 공고에서 찾지 못했습니다. 날짜를 알게 되면 이 메시지에 “2026-08-10 발표”처럼 답장해 주세요.`,
+    {},
+    { context: { domain: "housing", kind: "item", entityId: notice.id } },
+  );
+  if (confirmation?.message_id) saveTelegramMessage(confirmation.message_id, notice.id);
 }
 
 export const housingBotModule = {
@@ -60,19 +75,20 @@ export const housingBotModule = {
       return;
     }
     if (action === "ap") {
+      const previousApplicationStatus = housingApplicationStatus(id);
       setApplication(id, "applied");
       recordFeedbackEvent({
         domain: "housing", entityId: id, signal: "applied", rawText: "telegram callback",
-        metadata: { title: notice.title, source: notice.source },
+        metadata: { title: notice.title, source: notice.source, previousApplicationStatus },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "지원 상태로 저장했습니다." });
-      const confirmation = await sendMessage(`✅ 지원 진행 중으로 저장했습니다.\n[${notice.source}] ${notice.title}\n\n발표일을 알면 이 메시지에 “2026-08-10 발표”처럼 답장해 주세요.`);
-      saveTelegramMessage(confirmation.message_id, notice.id);
+      await sendApplicationConfirmation(notice, `✅ 지원 진행 중으로 저장했습니다.\n[${notice.source}] ${notice.title}`);
     } else if (action === "ig") {
+      const previousApplicationStatus = housingApplicationStatus(id);
       setApplication(id, "ignored");
       recordFeedbackEvent({
         domain: "housing", entityId: id, signal: "ignored", rawText: "telegram callback",
-        metadata: { title: notice.title, source: notice.source },
+        metadata: { title: notice.title, source: notice.source, previousApplicationStatus },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
     } else if (["rs", "rn"].includes(action)) {
@@ -137,9 +153,21 @@ export const housingBotModule = {
 
     if (!replyMessageId) return false;
     const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
+    const deliveryContext = telegramMessageContext(replyMessageId);
+    const contextItem = deliveryContext?.domain === "housing" && deliveryContext?.kind === "digest"
+      ? deliveryContext.items?.find((item) => Number(item.index) === itemNumber)
+      : null;
+    const contextEntityId = contextItem?.id
+      || (deliveryContext?.domain === "housing" && deliveryContext?.kind === "item" ? deliveryContext.entityId : null);
     const replied = (itemNumber ? noticeForDigestItem(replyMessageId, itemNumber) : null)
-      || noticeForMessage(replyMessageId);
+      || noticeForMessage(replyMessageId)
+      || (contextEntityId ? getNotice(contextEntityId) : null);
     if (!replied) return false;
+
+    if (undoFeedbackPattern.test(text)) {
+      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied.id, text })));
+      return true;
+    }
 
     const feedback = parseHousingResultFeedback(text);
     const previousResult = applicationResult(replied.id);
@@ -167,26 +195,33 @@ export const housingBotModule = {
     }
 
     if (appliedWords.test(text)) {
+      const previousApplicationStatus = housingApplicationStatus(replied.id);
       setApplication(replied.id, "applied");
       recordFeedbackEvent({
         domain: "housing", entityId: replied.id, signal: "applied", rawText: text,
-        metadata: { title: replied.title, source: replied.source },
+        metadata: { title: replied.title, source: replied.source, previousApplicationStatus },
       });
-      await sendMessage(`✅ 지원 진행 중으로 저장했습니다: ${replied.title}\n발표일을 알면 같은 공고 메시지에 날짜를 답장해 주세요.`);
+      await sendApplicationConfirmation(replied, `✅ 지원 진행 중으로 저장했습니다: ${replied.title}`);
       return true;
     }
     const date = normalizedDate(text);
     if (date) {
       setAnnouncementDate(replied.id, date);
-      await sendMessage(`📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.`);
+      const reminder = await proposeHousingApplicationFollowup(
+        { ...replied, announcement_date: date },
+        { announcementDate: date, intro: `📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.` },
+      );
+      if (!reminder) await sendMessage(`📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.`);
       return true;
     }
+    const previousApplicationStatus = housingApplicationStatus(replied.id);
     const entityFeedback = saveEntityFeedback({
       domain: "housing",
       entityId: replied.id,
       text,
       title: replied.title,
       source: replied.source,
+      metadata: { previousApplicationStatus },
     });
     if (entityFeedback) {
       if (ignoredWords.test(text)) {

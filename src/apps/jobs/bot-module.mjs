@@ -1,15 +1,25 @@
 import { sendJobApplicationStatus, sendJobReport } from "./report.mjs";
-import { getJobPosting, jobForDigestItem, setJobApplication } from "./db.mjs";
+import {
+  getJobPosting, jobApplicationStatus, jobForDigestItem, setJobApplication,
+} from "./db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
-import { recordFeedbackEvent } from "../../core/state.mjs";
+import { recordFeedbackEvent, telegramMessageContext } from "../../core/state.mjs";
 import {
   ruleProposalKeyboard,
   ruleProposalMessage,
   saveEntityFeedback,
 } from "../feedback/service.mjs";
+import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
+import { proposeJobApplicationFollowup } from "./application-followup.mjs";
 
 const appliedWords = /지원했|지원함|지원 완료|넣었|접수했/;
 const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래|이\s*회사.*(?:빼|제외)|회사.*(?:빼|제외)/;
+
+async function sendApplicationConfirmation(job) {
+  const intro = `✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}`;
+  const reminder = await proposeJobApplicationFollowup(job, { intro });
+  if (!reminder) await sendMessage(`${intro}\n\n/job_status : 지원 현황 확인`);
+}
 
 export const jobsBotModule = {
   id: "jobs",
@@ -31,18 +41,24 @@ export const jobsBotModule = {
       return;
     }
     if (action === "ap") {
+      const previousApplicationStatus = jobApplicationStatus(id);
       setJobApplication(id, "applied");
       recordFeedbackEvent({
         domain: "jobs", entityId: id, signal: "applied", subjectType: "company", subjectValue: job.company,
-        rawText: "telegram callback", metadata: { company: job.company, title: job.title, source: job.source },
+        rawText: "telegram callback", metadata: {
+          company: job.company, title: job.title, source: job.source, previousApplicationStatus,
+        },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "지원 추적 중으로 저장했습니다." });
-      await sendMessage(`✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}\n\n/job_status : 지원 현황 확인`);
+      await sendApplicationConfirmation(job);
     } else {
+      const previousApplicationStatus = jobApplicationStatus(id);
       setJobApplication(id, "ignored");
       recordFeedbackEvent({
         domain: "jobs", entityId: id, signal: "ignored", subjectType: "company", subjectValue: job.company,
-        rawText: "telegram callback", metadata: { company: job.company, title: job.title, source: job.source },
+        rawText: "telegram callback", metadata: {
+          company: job.company, title: job.title, source: job.source, previousApplicationStatus,
+        },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
       await sendMessage(`🚫 관심 없음으로 저장했습니다. 추천에서만 제외하며 지원 이력에는 넣지 않습니다.\n${job.company} — ${job.title}`);
@@ -62,17 +78,30 @@ export const jobsBotModule = {
     const replyMessageId = message.reply_to_message?.message_id;
     const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
     if (!replyMessageId || !itemNumber) return false;
-    const job = jobForDigestItem(replyMessageId, itemNumber);
+    const deliveryContext = telegramMessageContext(replyMessageId);
+    const contextItem = deliveryContext?.domain === "jobs" && deliveryContext?.kind === "digest"
+      ? deliveryContext.items?.find((item) => Number(item.index) === itemNumber)
+      : null;
+    const job = jobForDigestItem(replyMessageId, itemNumber)
+      || (contextItem?.id ? getJobPosting(contextItem.id) : null);
     if (!job) return false;
+    if (undoFeedbackPattern.test(text)) {
+      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "jobs", entityId: job.id, text })));
+      return true;
+    }
     if (appliedWords.test(text)) {
+      const previousApplicationStatus = jobApplicationStatus(job.id);
       setJobApplication(job.id, "applied");
       recordFeedbackEvent({
         domain: "jobs", entityId: job.id, signal: "applied", subjectType: "company", subjectValue: job.company,
-        rawText: text, metadata: { company: job.company, title: job.title, source: job.source },
+        rawText: text, metadata: {
+          company: job.company, title: job.title, source: job.source, previousApplicationStatus,
+        },
       });
-      await sendMessage(`✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}\n\n/job_status : 지원 현황 확인`);
+      await sendApplicationConfirmation(job);
       return true;
     }
+    const previousApplicationStatus = jobApplicationStatus(job.id);
     const feedback = saveEntityFeedback({
       domain: "jobs",
       entityId: job.id,
@@ -80,6 +109,7 @@ export const jobsBotModule = {
       title: job.title,
       company: job.company,
       source: job.source,
+      metadata: { previousApplicationStatus },
     });
     if (!feedback) return false;
     if (ignoredWords.test(text)) {

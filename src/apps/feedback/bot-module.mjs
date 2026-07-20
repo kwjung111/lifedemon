@@ -7,6 +7,7 @@ import {
   listFeedbackRules,
 } from "../../core/state.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
+import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "./undo.mjs";
 
 function applyProposal(proposal) {
   if (proposal.domain === "housing" && proposal.kind === "exclude_keyword") {
@@ -33,7 +34,7 @@ export function createFeedbackBotModule({
 } = {}) {
   return {
     id: "feedback",
-    help: "💬 피드백\n공고 메시지에 ‘2번 별로야’, ‘2번 이 회사는 앞으로 빼’처럼 답장\n영구 규칙은 적용 전에 한 번만 확인\n‘피드백 규칙 보여줘’로 확인·삭제",
+    help: "💬 피드백\n공고 메시지에 ‘2번 별로야’, ‘2번 이 회사는 앞으로 빼’처럼 답장\n‘방금 거 취소’로 최근 피드백 되돌리기\n영구 규칙은 적용 전에 한 번만 확인\n‘피드백 규칙 보여줘’로 확인·삭제",
     commands: [],
 
     canHandleCallback(query) {
@@ -73,6 +74,10 @@ export function createFeedbackBotModule({
 
     async handleMessage(message) {
       const text = String(message.text || "").trim();
+      if (undoFeedbackPattern.test(text)) {
+        await send(formatUndoResult(undoLatestFeedback({ text })));
+        return true;
+      }
       if (/^\/?feedback_rules(?:@\w+)?$/i.test(text) || /^피드백[ \t]*규칙(?:[ \t]*(?:목록|보여줘))?$/.test(text)) {
         const jobRules = listFeedbackRules("jobs");
         const housingRules = listHousingRules();

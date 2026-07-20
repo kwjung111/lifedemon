@@ -538,6 +538,16 @@ export function setApplication(noticeIdValue, status, fields = {}) {
   );
 }
 
+export function housingApplicationStatus(noticeIdValue) {
+  return db.prepare("SELECT status FROM applications WHERE notice_id=?").get(noticeIdValue)?.status || null;
+}
+
+export function restoreHousingApplicationStatus(noticeIdValue, status = null) {
+  if (!status) return db.prepare("DELETE FROM applications WHERE notice_id=?").run(noticeIdValue).changes > 0;
+  setApplication(noticeIdValue, status);
+  return true;
+}
+
 export function setAnnouncementDate(noticeIdValue, date) {
   setApplication(noticeIdValue, "applied", { announcementDate: date });
 }

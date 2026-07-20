@@ -29,7 +29,7 @@ export function parseEntityFeedback(text, { domain, company = null } = {}) {
 }
 
 export function saveEntityFeedback({
-  domain, entityId, text, title = null, company = null, source = null,
+  domain, entityId, text, title = null, company = null, source = null, metadata = null,
 }) {
   const parsed = parseEntityFeedback(text, { domain, company });
   if (!parsed) return null;
@@ -40,7 +40,7 @@ export function saveEntityFeedback({
     subjectType: company ? "company" : "item",
     subjectValue: company || title,
     rawText: text,
-    metadata: { title, company, source },
+    metadata: { title, company, source, ...(metadata || {}) },
   });
   const alreadyActive = parsed.durableRule && listFeedbackRules(
     parsed.durableRule.domain,

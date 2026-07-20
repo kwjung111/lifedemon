@@ -73,7 +73,9 @@ export function formatJobReportPages(collection = [], options = {}) { return bui
 export function formatJobReport(collection = [], options = {}) { return formatJobReportPages(collection, options)[0]; }
 export async function sendJobReport(collection = [], options = {}) {
   const sent = [];
-  for (const page of buildJobReportPages(collection, options)) {
+  const pages = buildJobReportPages(collection, options);
+  for (const [pageIndex, page] of pages.entries()) {
+    const context = { domain: "jobs", kind: "digest", items: page.items };
     const message = await sendMessage(page.text, {
       parse_mode: "HTML",
       ...(page.items.length ? {
@@ -83,6 +85,9 @@ export async function sendJobReport(collection = [], options = {}) {
           ]),
         },
       } : {}),
+    }, {
+      dedupeKey: options.deliveryKey ? `${options.deliveryKey}:${pageIndex + 1}` : null,
+      context,
     });
     if (message?.message_id) saveJobDigestItems(message.message_id, page.items);
     sent.push(message);

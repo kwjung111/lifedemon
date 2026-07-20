@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { officialSearchSource, searchOfficial } from "./official-tools.mjs";
 
 const shListUrl = "https://www.i-sh.co.kr/app/lay2/program/S1T294C297/www/brd/m_247/list.do?multi_itm_seq=2";
 
@@ -8,7 +9,19 @@ function shDetailUrl(seq) {
 
 export async function resolveHousingReminder(reminder) {
   const metadata = JSON.parse(reminder.metadata_json || "{}");
-  if (metadata.source !== "SH") return { url: reminder.url, note: null };
+  if (metadata.source !== "SH") {
+    const source = officialSearchSource(metadata.source, metadata.noticeTitle || "");
+    const query = `${metadata.noticeTitle || reminder.title} 서류심사 대상자 발표`;
+    const result = await searchOfficial(source, query);
+    const found = result.match?.status === "matched"
+      && /서류심사\s*대상자|당첨자\s*발표|선정\s*결과|대상자\s*발표/.test(`${result.matched || ""} ${result.text || ""}`);
+    return {
+      url: found ? result.url : reminder.url,
+      note: found ? `${source} 공식 발표 게시물을 자동으로 찾았습니다.` : "공식 발표 게시물을 아직 찾지 못해 원 공고를 연결합니다.",
+      found: Boolean(found),
+      matchedTitle: found ? result.matched : null,
+    };
+  }
 
   const required = Array.isArray(metadata.keywords)
     ? metadata.keywords.filter((keyword) => typeof keyword === "string" && keyword.trim())

@@ -9,6 +9,7 @@ const housingProfile = join(dataDir, "housing-profile.json");
 writeFileSync(housingProfile, JSON.stringify({ householdSize: 1 }));
 process.env.MONITOR_DATA_DIR = dataDir;
 process.env.HOUSING_DATA_DIR = dataDir;
+process.env.JOB_DATA_DIR = dataDir;
 process.env.HOUSING_USER_PROFILE_FILE = housingProfile;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
@@ -29,10 +30,15 @@ const {
 } = await import("../src/apps/feedback/service.mjs");
 const { createFeedbackBotModule } = await import("../src/apps/feedback/bot-module.mjs");
 const { db: housingDb } = await import("../src/db.mjs");
+const {
+  jobApplicationStatus, jobDb, setJobApplication, upsertJobPosting,
+} = await import("../src/apps/jobs/db.mjs");
+const { undoLatestFeedback } = await import("../src/apps/feedback/undo.mjs");
 
 test.after(() => {
   platformDb.close();
   housingDb.close();
+  jobDb.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -105,4 +111,52 @@ test("explicit housing exclusions are proposals rather than immediate rules", ()
   });
   assert.equal(proposal.status, "proposed");
   assert.equal(listFeedbackRules("housing").length, 0);
+});
+
+test("undo restores application state and removes the feedback from active history", () => {
+  const jobId = upsertJobPosting({
+    source: "wanted", company: "되돌림회사", title: "SRE", url: "https://example.test/undo",
+    rawText: "테스트 공고",
+  });
+  const previousApplicationStatus = jobApplicationStatus(jobId);
+  const feedback = saveEntityFeedback({
+    domain: "jobs", entityId: jobId, text: "1번 별로야",
+    company: "되돌림회사", title: "SRE", source: "wanted",
+    metadata: { previousApplicationStatus },
+  });
+  setJobApplication(jobId, "ignored");
+  assert.equal(jobApplicationStatus(jobId), "ignored");
+
+  const undone = undoLatestFeedback({ domain: "jobs", entityId: jobId, text: "방금 거 취소" });
+  assert.equal(undone.event.id, feedback.event.id);
+  assert.equal(jobApplicationStatus(jobId), null);
+  assert.equal(recentFeedbackEvents().some((event) => event.id === feedback.event.id), false);
+});
+
+test("undo also disables a durable rule approved from that feedback", async () => {
+  const jobId = upsertJobPosting({
+    source: "wanted", company: "영구제외회사", title: "Platform Engineer", url: "https://example.test/rule-undo",
+    rawText: "테스트 공고",
+  });
+  const feedback = saveEntityFeedback({
+    domain: "jobs", entityId: jobId, text: "이 회사는 앞으로 빼",
+    company: "영구제외회사", title: "Platform Engineer", source: "wanted",
+    metadata: { previousApplicationStatus: null },
+  });
+  setJobApplication(jobId, "ignored");
+  const module = createFeedbackBotModule({
+    apply: (value) => {
+      const rule = addFeedbackRule(value);
+      return `feedback:${rule.id}`;
+    },
+    telegramApi: async () => null,
+    send: async () => null,
+  });
+  await module.handleCallback({ id: "callback-rule-undo", data: `f:ap:${feedback.proposal.id}` });
+  assert.equal(listFeedbackRules("jobs", "exclude_company").some((rule) => rule.keyword === "영구제외회사"), true);
+
+  const undone = undoLatestFeedback({ domain: "jobs", entityId: jobId, text: "이 회사 제외한 거 취소" });
+  assert.equal(undone.ruleDisabled, true);
+  assert.equal(listFeedbackRules("jobs", "exclude_company").some((rule) => rule.keyword === "영구제외회사"), false);
+  assert.equal(jobApplicationStatus(jobId), null);
 });
