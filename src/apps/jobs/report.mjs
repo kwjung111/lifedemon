@@ -3,6 +3,7 @@ import { appliedJobs, getJobSetting, jobAssessmentSummary, saveJobDigestItems } 
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
 import { listFeedbackRules, recentFeedbackEvents } from "../../core/state.mjs";
+import { semanticPreferences } from "../feedback/preferences.mjs";
 
 const sourceLabel = { remember: "리멤버", wanted: "원티드", jobkorea: "잡코리아" };
 const telegramLimit = 4000;
@@ -21,14 +22,15 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const excludedCompanies = listFeedbackRules("jobs", "exclude_company").map((rule) => rule.keyword);
-  const preferredCompanies = recentFeedbackEvents(100)
+  const feedbackEvents = recentFeedbackEvents(100);
+  const preferredCompanies = feedbackEvents
     .filter((event) => event.domain === "jobs" && event.signal === "positive" && event.subject_type === "company")
     .map((event) => event.subject_value);
   const summary = jobAssessmentSummary(
     jobProfileFingerprint(profile),
     companyVerificationFingerprint(verifications),
     limit,
-    { excludedCompanies, preferredCompanies },
+    { excludedCompanies, preferredCompanies, semanticPreferences: semanticPreferences(feedbackEvents, "jobs") },
   );
   const applications = appliedJobs();
   const collectionLine = collection.length ? collection.map((entry) => `${sourceLabel[entry.source] || entry.source} ${entry.error ? "오류" : entry.count}`).join(" · ") : "수집 결과 없음";

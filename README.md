@@ -64,9 +64,13 @@ button. Other feedback is sent by replying to the digest with the item number:
 The wording is conversational rather than command-only. A reply may identify an
 item by number anywhere in the sentence, Korean ordinal, company/source name, or
 a distinctive title term. A single-item message also accepts `이건 별로`
-without a number. When several items remain possible, the bot asks which one
-once instead of guessing. This deterministic fast path does not require `/ask`
-or consume an AI call.
+without a number. An AI-first interpreter resolves the target and preserves the
+meaning, scope, strength, and separate positive/negative aspects of nuanced
+feedback. It runs directly from the reply without `/ask`. Only public digest
+labels are sent to the interpreter; private posting bodies and credentials are
+not included. Low-confidence or ambiguous interpretations produce one short
+clarification instead of a guessed mutation. If the interpreter is unavailable,
+the narrow deterministic parser remains as a safe fallback.
 
 Item feedback is stored in the shared platform database. A negative reply hides
 that item but does not silently become a permanent preference. Wording that
@@ -74,8 +78,12 @@ clearly requests a durable rule creates a single `적용`/`취소` confirmation.
 Approved company rules hide later job postings from the same normalized company,
 and approved housing keyword rules enter the existing housing collection and AI
 review instructions. Messages that receive no reply are not treated as negative
-feedback. Explicit positive job feedback modestly promotes later postings from
-the same company, but never overrides hard role or company-verification gates.
+feedback. Stored company, role, housing type, location, cost, and eligibility
+preferences adjust the ordering of matching later recommendations, while hard
+eligibility, role, and company-verification gates remain authoritative. Mixed
+feedback such as `회사는 좋은데 직무는 별로` stores both aspects independently
+and does not hide the current item. Send `/feedback` to inspect what the bot
+understood and is using.
 Send `피드백 규칙 보여줘` to review active durable rules and delete one with a
 reply such as `J2 규칙 삭제` or `H3 규칙 삭제`.
 

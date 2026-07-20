@@ -13,6 +13,7 @@ process.env.JOB_DATA_DIR = dataDir;
 process.env.HOUSING_USER_PROFILE_FILE = housingProfile;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
+process.env.FEEDBACK_AI_ENABLED = "false";
 
 let messageId = 900;
 globalThis.fetch = async () => ({

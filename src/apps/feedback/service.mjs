@@ -57,6 +57,57 @@ export function saveEntityFeedback({
   return { ...parsed, event, proposal, alreadyActive };
 }
 
+export function saveInterpretedFeedback({
+  domain, entityId, text, interpretation, title = null, company = null, source = null,
+  metadata = null,
+}) {
+  const signal = interpretation.intent === "durable_rule" ? "negative" : interpretation.intent;
+  if (!["positive", "negative", "mixed"].includes(signal)) return null;
+  const subjectType = interpretation.scope === "company" && company ? "company" : interpretation.scope || "item";
+  const subjectValue = subjectType === "company"
+    ? company
+    : interpretation.keywords?.[0] || title;
+  const event = recordFeedbackEvent({
+    domain,
+    entityId,
+    signal,
+    subjectType,
+    subjectValue,
+    rawText: text,
+    metadata: {
+      title, company, source, ...(metadata || {}),
+      interpretation: {
+        scope: interpretation.scope,
+        strength: interpretation.strength,
+        preference: interpretation.preference,
+        keywords: interpretation.keywords,
+        aspects: interpretation.aspects || [],
+        confidence: interpretation.confidence,
+        reason: interpretation.reason,
+        source: interpretation.source,
+      },
+    },
+  });
+  let durableRule = null;
+  if (interpretation.intent === "durable_rule") {
+    if (domain === "jobs" && interpretation.ruleKind === "exclude_company" && company) {
+      durableRule = { domain, kind: "exclude_company", keyword: company, instruction: `${company} 회사 제외` };
+    }
+    if (domain === "housing" && interpretation.ruleKind === "exclude_keyword" && interpretation.ruleKeyword) {
+      durableRule = {
+        domain, kind: "exclude_keyword", keyword: interpretation.ruleKeyword,
+        instruction: `${interpretation.ruleKeyword} 제외`,
+      };
+    }
+  }
+  const alreadyActive = durableRule && listFeedbackRules(durableRule.domain, durableRule.kind)
+    .some((rule) => rule.keyword === durableRule.keyword);
+  const proposal = durableRule && !alreadyActive
+    ? createFeedbackRuleProposal({ ...durableRule, sourceEventId: event.id })
+    : null;
+  return { signal, event, durableRule, proposal, alreadyActive, interpretation };
+}
+
 export function proposeExplicitRule(rule) {
   return createFeedbackRuleProposal({
     domain: rule.domain,

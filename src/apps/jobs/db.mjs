@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { semanticPreferenceScore } from "../feedback/preferences.mjs";
 
 const dataDir = process.env.JOB_DATA_DIR || "/data/crawler/data";
 mkdirSync(dataDir, { recursive: true });
@@ -153,6 +154,7 @@ function preferredDuplicate(left, right) {
 export function jobAssessmentSummary(profileFingerprint, verificationFingerprint, limit = 12, {
   excludedCompanies = [],
   preferredCompanies = [],
+  semanticPreferences = [],
 } = {}) {
   const excludedCompanyKeys = new Set(excludedCompanies.map(canonicalCompany).filter(Boolean));
   const preferredCompanyKeys = new Set(preferredCompanies.map(canonicalCompany).filter(Boolean));
@@ -180,7 +182,9 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
       if (left.decision !== right.decision) return left.decision === "pass" ? -1 : 1;
       const preferenceDifference = Number(preferredCompanyKeys.has(canonicalCompany(right.company)))
         - Number(preferredCompanyKeys.has(canonicalCompany(left.company)));
-      return preferenceDifference || String(right.assessed_at).localeCompare(String(left.assessed_at));
+      const semanticDifference = semanticPreferenceScore(right, semanticPreferences, "jobs")
+        - semanticPreferenceScore(left, semanticPreferences, "jobs");
+      return semanticDifference || preferenceDifference || String(right.assessed_at).localeCompare(String(left.assessed_at));
     })
     .slice(0, limit);
   const failures = jobDb.prepare(`

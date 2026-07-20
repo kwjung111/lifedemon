@@ -1,6 +1,8 @@
 import { activeNotices, appliedNotices, exhaustedReviewCount, getSetting, housingOutcomeFeedback, recentApplicationResults, saveDigestItems } from "./db.mjs";
 import { scoreLabel } from "./apps/housing/scoring.mjs";
 import { sendMessage } from "./telegram.mjs";
+import { recentFeedbackEvents } from "./core/state.mjs";
+import { semanticPreferences, semanticPreferenceScore } from "./apps/feedback/preferences.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
 const sourceOrder = ["마이홈 API", "청년안심주택", "HUG"];
@@ -51,11 +53,17 @@ function resultPreferenceRank(notice, feedback) {
   return [reachedPriority >= 2 ? reachedPriority : 0, supplyUnits];
 }
 
-export function rankHousingCandidates(candidates, feedback = housingOutcomeFeedback()) {
+export function rankHousingCandidates(
+  candidates,
+  feedback = housingOutcomeFeedback(),
+  preferences = semanticPreferences(recentFeedbackEvents(100), "housing"),
+) {
   return [...candidates].sort((left, right) => {
     const [leftPriority, leftUnits] = resultPreferenceRank(left, feedback);
     const [rightPriority, rightUnits] = resultPreferenceRank(right, feedback);
-    return rightPriority - leftPriority || rightUnits - leftUnits || (right.ai_score || 0) - (left.ai_score || 0);
+    const semanticDifference = semanticPreferenceScore(right, preferences, "housing")
+      - semanticPreferenceScore(left, preferences, "housing");
+    return semanticDifference || rightPriority - leftPriority || rightUnits - leftUnits || (right.ai_score || 0) - (left.ai_score || 0);
   });
 }
 

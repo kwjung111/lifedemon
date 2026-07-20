@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.0 - 2026-07-20
+
+### Added
+
+- Added an AI-first structured feedback interpreter for housing and job digest replies, using the linked Codex account first and the configured API key only for quota or authentication fallback.
+- Nuanced replies retain target, scope, strength, rationale, and separate positive/negative aspects, so tradeoffs are not collapsed into one binary signal.
+- `/feedback` shows the recent preferences the bot understood and currently uses.
+- Learned company, role, housing type, location, cost, and eligibility preferences now affect the order of matching future recommendations.
+
+### Safety
+
+- The interpreter receives public digest labels only, has no browsing or file access, and treats message contents as untrusted data.
+- Ambiguous or low-confidence feedback asks a short clarification; permanent exclusions require high confidence, explicit future-oriented wording, and the existing approval button.
+- A deterministic parser remains available only as an outage fallback, and hard eligibility or company-verification gates always outrank learned preferences.
+
 ## 1.9.0 - 2026-07-20
 
 ### Added

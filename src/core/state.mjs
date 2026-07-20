@@ -130,7 +130,7 @@ export function setPlatformSetting(key, value) {
   `).run(key, String(value));
 }
 
-const feedbackSignals = new Set(["positive", "negative", "applied", "ignored"]);
+const feedbackSignals = new Set(["positive", "negative", "mixed", "applied", "ignored"]);
 
 export function recordFeedbackEvent({
   domain, entityId, signal, subjectType = null, subjectValue = null,

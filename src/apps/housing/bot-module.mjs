@@ -22,13 +22,14 @@ import {
   ruleProposalKeyboard,
   ruleProposalMessage,
   parseEntityFeedback,
-  saveEntityFeedback,
+  saveInterpretedFeedback,
 } from "../feedback/service.mjs";
 import { recordFeedbackEvent } from "../../core/state.mjs";
 import { telegramMessageContext } from "../../core/state.mjs";
 import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
 import { proposeHousingApplicationFollowup } from "./application-followup.mjs";
 import { feedbackTargetQuestion, resolveFeedbackTarget } from "../feedback/reference.mjs";
+import { feedbackAiEnabled, interpretFeedback } from "../feedback/ai-parser.mjs";
 
 const datePattern = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/;
 
@@ -168,83 +169,137 @@ export const housingBotModule = {
       if (notice && !candidates.some((candidate) => candidate.id === notice.id)) candidates.push({ ...notice, index: 1 });
     }
     if (!candidates.length) return false;
-    const resolution = resolveFeedbackTarget(text, candidates);
-    const replied = resolution.item;
-    if (!replied) {
-      await sendMessage(feedbackTargetQuestion(candidates, resolution));
-      return true;
-    }
+    const localResolution = resolveFeedbackTarget(text, candidates);
+    const resultFeedback = parseHousingResultFeedback(text);
+    const directDate = normalizedDate(text);
+    const hasResultDetails = Boolean(
+      resultFeedback.housingName || resultFeedback.cutoffPriority || resultFeedback.cutoffScore != null
+      || resultFeedback.supplyUnits || resultFeedback.reachedPriority || resultFeedback.preference,
+    );
 
+    // Result facts, dates, and undo are state updates, not recommendation opinions.
     if (undoFeedbackPattern.test(text)) {
-      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied.id, text })));
+      await sendMessage(formatUndoResult(undoLatestFeedback({
+        domain: "housing", entityId: localResolution.item?.id || null, text,
+      })));
       return true;
     }
-
-    const feedback = parseHousingResultFeedback(text);
-    const previousResult = applicationResult(replied.id);
-    if (feedback.outcome || previousResult) {
+    if ((resultFeedback.outcome || directDate) && !localResolution.item) {
+      await sendMessage(feedbackTargetQuestion(candidates, localResolution));
+      return true;
+    }
+    if (resultFeedback.outcome || (localResolution.item && applicationResult(localResolution.item.id) && hasResultDetails)) {
+      const replied = localResolution.item;
+      const previousResult = applicationResult(replied.id);
       const saved = saveApplicationResult(replied.id, {
         stage: "document",
-        outcome: feedback.outcome || previousResult.outcome,
-        housingName: feedback.housingName,
-        cutoffPriority: feedback.cutoffPriority,
-        cutoffScore: feedback.cutoffScore,
-        supplyUnits: feedback.supplyUnits,
-        reachedPriority: feedback.reachedPriority,
-        note: feedback.note,
+        outcome: resultFeedback.outcome || previousResult?.outcome,
+        housingName: resultFeedback.housingName,
+        cutoffPriority: resultFeedback.cutoffPriority,
+        cutoffScore: resultFeedback.cutoffScore,
+        supplyUnits: resultFeedback.supplyUnits,
+        reachedPriority: resultFeedback.reachedPriority,
+        note: resultFeedback.note,
         source: "telegram",
       });
-      if (feedback.preference) setHousingRecommendationFeedback(feedback.preference);
+      if (resultFeedback.preference) setHousingRecommendationFeedback(resultFeedback.preference);
       await sendMessage([
         "📝 지원 결과 피드백을 저장했습니다.",
         saved.housing_name ? `지원 주택: ${saved.housing_name}` : null,
         saved.cutoff_priority ? `컷라인: ${saved.cutoff_priority}순위${saved.cutoff_score != null ? ` ${saved.cutoff_score}점` : ""}` : null,
         saved.supply_units ? `공급호수: ${saved.supply_units}호` : null,
-        feedback.preference ? `다음 추천 기준: ${feedback.preference}` : null,
+        resultFeedback.preference ? `다음 추천 기준: ${resultFeedback.preference}` : null,
       ].filter(Boolean).join("\n"));
       return true;
     }
+    if (directDate) {
+      const replied = localResolution.item;
+      setAnnouncementDate(replied.id, directDate);
+      const reminder = await proposeHousingApplicationFollowup(
+        { ...replied, announcement_date: directDate },
+        { announcementDate: directDate, intro: `📅 ${replied.title}\n발표일을 ${directDate}로 저장했습니다.` },
+      );
+      if (!reminder) await sendMessage(`📅 ${replied.title}\n발표일을 ${directDate}로 저장했습니다.`);
+      return true;
+    }
 
-    const parsedEntityFeedback = parseEntityFeedback(text, { domain: "housing" });
-    if (parsedEntityFeedback?.signal === "applied") {
+    let interpretation = null;
+    if (feedbackAiEnabled()) {
+      try {
+        interpretation = await interpretFeedback(text, { domain: "housing", items: candidates });
+      } catch (error) {
+        console.error("Feedback AI failed; using deterministic fallback", error.message);
+      }
+    }
+    let replied = interpretation?.targetIndex
+      ? candidates.find((candidate) => Number(candidate.index) === interpretation.targetIndex)
+      : null;
+    if (!interpretation) {
+      replied = localResolution.item;
+      if (!replied) {
+        await sendMessage(feedbackTargetQuestion(candidates, localResolution));
+        return true;
+      }
+      const parsed = parseEntityFeedback(text, { domain: "housing" });
+      if (!parsed) {
+        await sendMessage("뜻을 확실히 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 조금만 더 알려주세요.");
+        return true;
+      }
+      interpretation = {
+        intent: parsed.signal, scope: "item", strength: "medium", preference: text,
+        keywords: [], aspects: [], confidence: 100, reason: "명시적 표현 규칙으로 해석", source: "rules",
+      };
+    }
+    if (interpretation.intent === "clarify") {
+      await sendMessage(interpretation.clarification || "어느 공고에 대한 어떤 의견인지 조금만 더 알려주세요.");
+      return true;
+    }
+    if (interpretation.intent === "not_feedback") {
+      await sendMessage("공고에 대한 의견으로 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 알려주세요.");
+      return true;
+    }
+    if (interpretation.intent === "undo") {
+      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied?.id || null, text })));
+      return true;
+    }
+    if (!replied) {
+      await sendMessage("어느 공고에 대한 의견인지 공고 번호나 이름을 한 번만 알려주세요.");
+      return true;
+    }
+    if (interpretation.intent === "applied") {
       const previousApplicationStatus = housingApplicationStatus(replied.id);
       setApplication(replied.id, "applied");
       recordFeedbackEvent({
         domain: "housing", entityId: replied.id, signal: "applied", rawText: text,
-        metadata: { title: replied.title, source: replied.source, previousApplicationStatus },
+        metadata: { title: replied.title, source: replied.source, previousApplicationStatus, interpretation },
       });
       await sendApplicationConfirmation(replied, `✅ 지원 진행 중으로 저장했습니다: ${replied.title}`);
       return true;
     }
-    const date = normalizedDate(text);
-    if (date) {
-      setAnnouncementDate(replied.id, date);
-      const reminder = await proposeHousingApplicationFollowup(
-        { ...replied, announcement_date: date },
-        { announcementDate: date, intro: `📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.` },
-      );
-      if (!reminder) await sendMessage(`📅 ${replied.title}\n발표일을 ${date}로 저장했습니다.`);
-      return true;
-    }
     const previousApplicationStatus = housingApplicationStatus(replied.id);
-    const entityFeedback = saveEntityFeedback({
-      domain: "housing",
-      entityId: replied.id,
-      text,
-      title: replied.title,
-      source: replied.source,
-      metadata: { previousApplicationStatus },
+    const entityFeedback = saveInterpretedFeedback({
+      domain: "housing", entityId: replied.id, text, title: replied.title, source: replied.source,
+      interpretation, metadata: { previousApplicationStatus },
     });
     if (entityFeedback) {
       if (entityFeedback.signal === "negative") {
         setApplication(replied.id, "ignored");
-        await sendMessage(`알겠어요. 이 공고는 추천에서 제외했습니다: ${replied.title}`);
+        if (entityFeedback.proposal) {
+          await sendMessage(ruleProposalMessage(
+            entityFeedback.proposal,
+            "이 공고는 즉시 숨기고, 승인하면 같은 유형을 이후 공고에서도 제외",
+          ), { reply_markup: ruleProposalKeyboard(entityFeedback.proposal) });
+        } else {
+          await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n이 공고는 추천에서 제외했습니다.\n${replied.title}`);
+        }
+      } else if (entityFeedback.signal === "mixed") {
+        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n좋고 아쉬운 점을 따로 저장했어요. 이 공고는 아직 숨기지 않았습니다.\n${replied.title}`);
       } else {
-        await sendMessage(`피드백을 저장했습니다: ${replied.title}`);
+        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n다음 추천 순서에 반영합니다.\n${replied.title}`);
       }
       return true;
     }
-    await sendMessage("주거 브리핑에는 공고 번호를 붙여 답장해 주세요. 예: ‘3번 넣었어’");
+    await sendMessage("피드백 의미를 안전하게 적용하지 못했어요. 의견을 조금만 더 구체적으로 알려주세요.");
     return true;
   },
 };
