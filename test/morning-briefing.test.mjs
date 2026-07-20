@@ -149,11 +149,11 @@ test("shows only the remaining housing recommendations on request", async () => 
 });
 
 test("executes globally interpreted recommendation navigation in the briefing app", async () => {
-  const context = { semantic: { route: "recommendations_list", domain: "jobs" } };
+  const context = { semantic: { route: "recommendations_list", domain: "housing" } };
   assert.equal(briefingBotModule.canHandleMessage({}, context), true);
-  assert.equal(await briefingBotModule.handleMessage({ text: "채용 다 보여줘" }, context), true);
+  assert.equal(await briefingBotModule.handleMessage({ text: "주택 다 보여줘" }, context), true);
   const row = platformDb.prepare("SELECT context_json FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
-  assert.equal(JSON.parse(row.context_json).domain, "jobs");
+  assert.equal(JSON.parse(row.context_json).domain, "housing");
 });
 
 test("keeps Inbox actions replyable without adding action buttons", async () => {
