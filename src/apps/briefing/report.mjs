@@ -180,20 +180,25 @@ export async function sendMorningBriefing({ now = new Date(), deliveryKey = null
 }
 
 export async function sendMoreRecommendations(domain, { offset = 0, limit = 6 } = {}) {
-  const rows = domain === "housing"
-    ? housingReportSnapshot({ offset, limit }).candidates.map((row) => ({ ...row, domain }))
-    : jobReportSnapshot({ offset, limit }).selected.map((row) => ({ ...row, domain }));
+  const snapshot = domain === "housing"
+    ? housingReportSnapshot({ offset, limit })
+    : jobReportSnapshot({ offset, limit });
+  const rows = (domain === "housing" ? snapshot.candidates : snapshot.selected)
+    .map((row) => ({ ...row, domain }));
   if (!rows.length) return sendMessage(`${domain === "housing" ? "주택" : "채용"} 추천에서 더 보여드릴 공고가 없습니다.`);
+  const start = Math.max(0, Number(offset) || 0);
+  const total = start + rows.length + snapshot.remaining;
   const items = rows.map((row, index) => ({
     index: index + 1, id: row.id, domain,
     title: row.title, company: row.company || null, source: row.source,
   }));
-  const lines = [`${domain === "housing" ? "🏠 주택" : "💼 채용"} 추가 추천`];
+  const lines = [`${domain === "housing" ? "🏠 주택" : "💼 채용"} 추천 · ${start + 1}–${start + rows.length} / ${total}`];
   for (const [index, row] of rows.entries()) {
     const label = domain === "housing" ? `[${row.source}] ${row.title}` : `${row.company} — ${row.title}`;
     lines.push(`${index + 1}. ${link(row.url, String(label).slice(0, 115))}`);
   }
   lines.push("", "이 메시지에 번호와 함께 평소 말투로 답장해 주세요.");
+  if (snapshot.remaining > 0) lines.push("다음 목록은 이 메시지에 ‘더 보여줘’라고 답장하세요.");
   return sendMessage(lines.join("\n"), {
     parse_mode: "HTML",
     reply_markup: {
@@ -202,7 +207,12 @@ export async function sendMoreRecommendations(domain, { offset = 0, limit = 6 } 
         callback_data: `${domain === "housing" ? "h" : "j"}:ap:${item.id}`,
       }]),
     },
-  }, { context: { domain, kind: "digest", items } });
+  }, {
+    context: {
+      domain, kind: "digest", items, offset: start,
+      nextOffset: start + rows.length, remaining: snapshot.remaining,
+    },
+  });
 }
 
 export function briefingItem(context, text) {

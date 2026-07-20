@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.1 - 2026-07-21
+
+### Fixed
+
+- Natural list requests such as `채용 다 보여줘`, `채용 전체 목록 보여줘`, and punctuation variants now route to job recommendations.
+- Replying `더 보여줘` to a job or housing recommendation list now advances to the next page instead of repeating or falling through.
+- Recommendation pages now show their current range and total while remaining bounded to one Telegram message at a time.
+
 ## 1.14.0 - 2026-07-20
 
 ### Added
