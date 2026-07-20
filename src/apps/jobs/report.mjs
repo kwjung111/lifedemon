@@ -45,7 +45,7 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
     `마지막 정상 수집: ${healthTime(getJobSetting("job_collection_last_success_at"))}`,
     `판정: 적합 ${summary.counts.pass || 0} · 확인 ${summary.counts.uncertain || 0} · 제외 ${summary.counts.exclude || 0}`,
     `지원 추적: ${applications.length}건`,
-    "답장 예: ‘2번 지원했어’, ‘2번 별로야’, ‘2번 이 회사는 앞으로 빼’",
+    "이 메시지에 평소 말투로 답장: ‘2번이 제일 나아’, ‘위시켓은 별로’, ‘이 회사 다음부터 빼줘’",
   ];
   if (!summary.selected.length) {
     header.push("", "현재 조건을 통과한 공고가 없습니다.");

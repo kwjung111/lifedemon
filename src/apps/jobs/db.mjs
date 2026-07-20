@@ -251,6 +251,14 @@ export function jobForDigestItem(messageId, itemIndex) {
   `).get(messageId, itemIndex) || null;
 }
 
+export function jobsForDigest(messageId) {
+  return jobDb.prepare(`
+    SELECT p.*, d.item_index AS item_index
+    FROM job_digest_items d JOIN job_postings p ON p.id=d.posting_id
+    WHERE d.message_id=? ORDER BY d.item_index
+  `).all(messageId);
+}
+
 export function activeJobCompanies(limit = 100) {
   return jobDb.prepare("SELECT company, MAX(last_seen) AS last_seen FROM job_postings WHERE active=1 GROUP BY company ORDER BY last_seen DESC LIMIT ?").all(limit).map((row) => row.company);
 }

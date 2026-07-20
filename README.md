@@ -56,7 +56,17 @@ button. Other feedback is sent by replying to the digest with the item number:
 2번 별로야
 3번 괜찮네
 2번 이 회사는 앞으로 빼
+두 번째가 제일 나아 보이네
+위시켓은 좀 미묘한데
+콘텐츠브릿지는 지원해볼 만함
 ```
+
+The wording is conversational rather than command-only. A reply may identify an
+item by number anywhere in the sentence, Korean ordinal, company/source name, or
+a distinctive title term. A single-item message also accepts `이건 별로`
+without a number. When several items remain possible, the bot asks which one
+once instead of guessing. This deterministic fast path does not require `/ask`
+or consume an AI call.
 
 Item feedback is stored in the shared platform database. A negative reply hides
 that item but does not silently become a permanent preference. Wording that

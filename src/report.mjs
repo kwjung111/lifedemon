@@ -152,7 +152,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   }
   for (const [pageIndex, page] of pages.entries()) {
     page.lines.push("", "※ 자격·공식 근거가 불확실한 점수는 ‘(추정)’으로 표시합니다.");
-    page.lines.push("답장 예: ‘3번 넣었어’, ‘3번 별로야’, ‘3번 2026-08-10 발표’");
+    page.lines.push("이 메시지에 평소 말투로 답장: ‘3번 신청했어’, ‘2번이 제일 나아’, ‘이 공고는 별로’");
     const keyboard = page.notices.map((notice, index) => [
       { text: `${index + 1}번 신청했어`, callback_data: `h:ap:${notice.id}` },
       { text: `${index + 1} 원문`, url: notice.url },

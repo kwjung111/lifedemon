@@ -1,19 +1,19 @@
 import { sendJobApplicationStatus, sendJobReport } from "./report.mjs";
 import {
-  getJobPosting, jobApplicationStatus, jobForDigestItem, setJobApplication,
+  getJobPosting, jobApplicationStatus, jobsForDigest, setJobApplication,
 } from "./db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { recordFeedbackEvent, telegramMessageContext } from "../../core/state.mjs";
 import {
   ruleProposalKeyboard,
   ruleProposalMessage,
+  parseEntityFeedback,
   saveEntityFeedback,
 } from "../feedback/service.mjs";
 import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
 import { proposeJobApplicationFollowup } from "./application-followup.mjs";
+import { feedbackTargetQuestion, resolveFeedbackTarget } from "../feedback/reference.mjs";
 
-const appliedWords = /지원했|지원함|지원 완료|넣었|접수했/;
-const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래|이\s*회사.*(?:빼|제외)|회사.*(?:빼|제외)/;
 
 async function sendApplicationConfirmation(job) {
   const intro = `✅ 지원 진행 중으로 저장했습니다. 추천에서는 제외하고 지원 이력으로 추적합니다.\n${job.company} — ${job.title}`;
@@ -76,20 +76,33 @@ export const jobsBotModule = {
       return true;
     }
     const replyMessageId = message.reply_to_message?.message_id;
-    const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
-    if (!replyMessageId || !itemNumber) return false;
+    if (!replyMessageId) return false;
     const deliveryContext = telegramMessageContext(replyMessageId);
-    const contextItem = deliveryContext?.domain === "jobs" && deliveryContext?.kind === "digest"
-      ? deliveryContext.items?.find((item) => Number(item.index) === itemNumber)
-      : null;
-    const job = jobForDigestItem(replyMessageId, itemNumber)
-      || (contextItem?.id ? getJobPosting(contextItem.id) : null);
-    if (!job) return false;
+    const candidates = jobsForDigest(replyMessageId).map((job) => ({ ...job, index: job.item_index }));
+    if (deliveryContext?.domain === "jobs" && deliveryContext?.kind === "digest") {
+      for (const item of deliveryContext.items || []) {
+        if (candidates.some((candidate) => candidate.id === item.id)) continue;
+        const job = getJobPosting(item.id);
+        if (job) candidates.push({ ...job, index: item.index });
+      }
+    }
+    if (deliveryContext?.domain === "jobs" && deliveryContext?.kind === "item" && deliveryContext.entityId) {
+      const job = getJobPosting(deliveryContext.entityId);
+      if (job) candidates.push({ ...job, index: 1 });
+    }
+    if (!candidates.length) return false;
+    const resolution = resolveFeedbackTarget(text, candidates);
+    const job = resolution.item;
+    if (!job) {
+      await sendMessage(feedbackTargetQuestion(candidates, resolution));
+      return true;
+    }
     if (undoFeedbackPattern.test(text)) {
       await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "jobs", entityId: job.id, text })));
       return true;
     }
-    if (appliedWords.test(text)) {
+    const parsed = parseEntityFeedback(text, { domain: "jobs", company: job.company });
+    if (parsed?.signal === "applied") {
       const previousApplicationStatus = jobApplicationStatus(job.id);
       setJobApplication(job.id, "applied");
       recordFeedbackEvent({
@@ -112,10 +125,10 @@ export const jobsBotModule = {
       metadata: { previousApplicationStatus },
     });
     if (!feedback) {
-      await sendMessage("공고 연결은 확인했습니다. ‘1번 괜찮네’, ‘1번 별로야’, ‘1번 지원했어’처럼 번호와 행동을 함께 적어 주세요.");
+      await sendMessage("공고는 찾았습니다. 평소 말투로 의견을 알려주세요. 예: ‘괜찮아 보이네’, ‘좀 별로’, ‘지원했어’, ‘이 회사 다음부터 빼줘’. ");
       return true;
     }
-    if (ignoredWords.test(text)) {
+    if (feedback.signal === "negative") {
       setJobApplication(job.id, "ignored");
       if (feedback.proposal) {
         await sendMessage(ruleProposalMessage(

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.0 - 2026-07-20
+
+### Added
+
+- Digest feedback now resolves natural references anywhere in a reply, including `2번이`, `두 번째`, a company name, a source name, or a distinctive posting-title term.
+- Single-item messages accept context-only replies such as `이건 별로`; multi-item ambiguity produces one short clarification instead of guessing.
+- Expanded ordinary Korean preference language for positive, negative, applied, and durable-exclusion intent without routing through `/ask` or consuming an AI call.
+
+### Changed
+
+- Job and housing digest footers now invite normal conversational replies instead of presenting one rigid command grammar.
+- Negative feedback handling uses the shared parsed signal, keeping natural synonyms consistent across housing and jobs.
+
 ## 1.8.1 - 2026-07-20
 
 ### Fixed

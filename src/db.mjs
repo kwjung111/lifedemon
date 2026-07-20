@@ -581,6 +581,14 @@ export function noticeForDigestItem(messageId, itemNo) {
   `).get(messageId, itemNo);
 }
 
+export function noticesForDigest(messageId) {
+  return db.prepare(`
+    SELECT n.*, d.item_no AS item_no
+    FROM telegram_digest_items d JOIN notices n ON n.id=d.notice_id
+    WHERE d.message_id=? ORDER BY d.item_no
+  `).all(messageId);
+}
+
 export function getSetting(key, fallback = null) {
   return db.prepare("SELECT value FROM settings WHERE key=?").get(key)?.value ?? fallback;
 }

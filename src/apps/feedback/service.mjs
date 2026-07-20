@@ -4,10 +4,15 @@ import {
   recordFeedbackEvent,
 } from "../../core/state.mjs";
 
-const positiveWords = /좋아|좋네|괜찮|마음에|끌려|유용|추천[ \t]*좋/;
-const negativeWords = /별로|관심[ \t]*없|안[ \t]*끌|맘에[ \t]*안|마음에[ \t]*안|추천[ \t]*제외|안[ \t]*볼래/;
-const appliedWords = /지원했|신청했|접수했|넣었|지원[ \t]*완료|신청[ \t]*완료/;
-const durableWords = /앞으로|계속|항상|다시는|영구|이[ \t]*회사.*(?:빼|제외)|회사.*(?:빼|제외)/;
+const positiveWords = /좋|괜찮|마음에|맘에|끌려|유용|유망|나아\s*보|제일\s*나아|관심(?:이)?\s*가|지원해?\s*볼\s*만|해\s*볼\s*만|추천[ \t]*좋/;
+const negativeWords = /별로|관심[ \t]*없|안[ \t]*끌|안\s*좋|괜찮(?:지)?\s*않|맘에[ \t]*안|마음에[ \t]*(?:안|들지\s*않)|추천[ \t]*제외|안[ \t]*볼|패스|거를|싫|아닌(?:\s*(?:것|거))?\s*같|아닌\s*듯|아닌데|안\s*맞|메리트\s*없|미묘/;
+const appliedWords = /지원했|지원함|지원\s*완료|지원할게|신청했|신청함|신청\s*완료|신청할게|접수했|접수할게|넣었|넣을게/;
+const durableWords = /앞으로|앞으론|다음부터|다음엔|계속|항상|다시는|영구|더는|더\s*이상|이제.*(?:빼|제외|안\s*보여|안\s*나오)|이[ \t]*회사.*(?:빼|제외|안\s*보여|안\s*나오)|회사.*(?:빼|제외|안\s*보여|안\s*나오)/;
+
+export function hasFeedbackIntent(text) {
+  const value = String(text || "").trim();
+  return appliedWords.test(value) || positiveWords.test(value) || negativeWords.test(value) || durableWords.test(value);
+}
 
 export function parseEntityFeedback(text, { domain, company = null } = {}) {
   const value = String(text || "").trim();

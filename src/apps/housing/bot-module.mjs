@@ -5,7 +5,7 @@ import {
   applicationResultCheck,
   disableHousingRule,
   listHousingRules,
-  noticeForDigestItem,
+  noticesForDigest,
   noticeForMessage,
   saveTelegramMessage,
   saveApplicationResult,
@@ -21,15 +21,15 @@ import {
   proposeExplicitRule,
   ruleProposalKeyboard,
   ruleProposalMessage,
+  parseEntityFeedback,
   saveEntityFeedback,
 } from "../feedback/service.mjs";
 import { recordFeedbackEvent } from "../../core/state.mjs";
 import { telegramMessageContext } from "../../core/state.mjs";
 import { formatUndoResult, undoFeedbackPattern, undoLatestFeedback } from "../feedback/undo.mjs";
 import { proposeHousingApplicationFollowup } from "./application-followup.mjs";
+import { feedbackTargetQuestion, resolveFeedbackTarget } from "../feedback/reference.mjs";
 
-const appliedWords = /넣었|지원했|신청했|접수했/;
-const ignoredWords = /관심\s*없|별로|안\s*끌|맘에\s*안|마음에\s*안|추천\s*제외|안\s*볼래/;
 const datePattern = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/;
 
 function normalizedDate(text) {
@@ -152,17 +152,28 @@ export const housingBotModule = {
     }
 
     if (!replyMessageId) return false;
-    const itemNumber = Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0);
     const deliveryContext = telegramMessageContext(replyMessageId);
-    const contextItem = deliveryContext?.domain === "housing" && deliveryContext?.kind === "digest"
-      ? deliveryContext.items?.find((item) => Number(item.index) === itemNumber)
-      : null;
-    const contextEntityId = contextItem?.id
-      || (deliveryContext?.domain === "housing" && deliveryContext?.kind === "item" ? deliveryContext.entityId : null);
-    const replied = (itemNumber ? noticeForDigestItem(replyMessageId, itemNumber) : null)
-      || noticeForMessage(replyMessageId)
-      || (contextEntityId ? getNotice(contextEntityId) : null);
-    if (!replied) return false;
+    const candidates = noticesForDigest(replyMessageId).map((notice) => ({ ...notice, index: notice.item_no }));
+    const directNotice = noticeForMessage(replyMessageId);
+    if (directNotice) candidates.push({ ...directNotice, index: 1 });
+    if (deliveryContext?.domain === "housing" && deliveryContext?.kind === "digest") {
+      for (const item of deliveryContext.items || []) {
+        if (candidates.some((candidate) => candidate.id === item.id)) continue;
+        const notice = getNotice(item.id);
+        if (notice) candidates.push({ ...notice, index: item.index });
+      }
+    }
+    if (deliveryContext?.domain === "housing" && deliveryContext?.kind === "item" && deliveryContext.entityId) {
+      const notice = getNotice(deliveryContext.entityId);
+      if (notice && !candidates.some((candidate) => candidate.id === notice.id)) candidates.push({ ...notice, index: 1 });
+    }
+    if (!candidates.length) return false;
+    const resolution = resolveFeedbackTarget(text, candidates);
+    const replied = resolution.item;
+    if (!replied) {
+      await sendMessage(feedbackTargetQuestion(candidates, resolution));
+      return true;
+    }
 
     if (undoFeedbackPattern.test(text)) {
       await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied.id, text })));
@@ -194,7 +205,8 @@ export const housingBotModule = {
       return true;
     }
 
-    if (appliedWords.test(text)) {
+    const parsedEntityFeedback = parseEntityFeedback(text, { domain: "housing" });
+    if (parsedEntityFeedback?.signal === "applied") {
       const previousApplicationStatus = housingApplicationStatus(replied.id);
       setApplication(replied.id, "applied");
       recordFeedbackEvent({
@@ -224,7 +236,7 @@ export const housingBotModule = {
       metadata: { previousApplicationStatus },
     });
     if (entityFeedback) {
-      if (ignoredWords.test(text)) {
+      if (entityFeedback.signal === "negative") {
         setApplication(replied.id, "ignored");
         await sendMessage(`알겠어요. 이 공고는 추천에서 제외했습니다: ${replied.title}`);
       } else {

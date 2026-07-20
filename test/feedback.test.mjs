@@ -49,9 +49,17 @@ test("parses item feedback without treating silence as a negative signal", () =>
   assert.equal(parseEntityFeedback("2번 나중에 볼게", { domain: "jobs", company: "좋은회사" }), null);
   assert.equal(parseEntityFeedback("2번 별로야", { domain: "jobs", company: "좋은회사" }).signal, "negative");
   assert.equal(parseEntityFeedback("2번 관심 없어", { domain: "jobs", company: "좋은회사" }).signal, "negative");
+  assert.equal(parseEntityFeedback("위시켓은 좀 미묘한데", { domain: "jobs", company: "위시켓" }).signal, "negative");
+  assert.equal(parseEntityFeedback("두 번째가 제일 나아 보이네", { domain: "jobs", company: "좋은회사" }).signal, "positive");
+  assert.equal(parseEntityFeedback("이건 지원해볼 만함", { domain: "jobs", company: "좋은회사" }).signal, "positive");
+  assert.equal(parseEntityFeedback("이거 신청할게", { domain: "housing" }).signal, "applied");
   assert.deepEqual(
     parseEntityFeedback("2번 이 회사는 앞으로 빼", { domain: "jobs", company: "제외회사" }).durableRule,
     { domain: "jobs", kind: "exclude_company", keyword: "제외회사", instruction: "제외회사 회사 제외" },
+  );
+  assert.equal(
+    parseEntityFeedback("이 회사 다음부터 안 보여줘", { domain: "jobs", company: "제외회사" }).durableRule.keyword,
+    "제외회사",
   );
 });
 
