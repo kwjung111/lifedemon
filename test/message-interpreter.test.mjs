@@ -11,7 +11,7 @@ function raw(overrides = {}) {
     follow_up: false, target_index: null, title: null, kind: null, event_at: null,
     next_action: null, url: null, assumptions: [], clear_event_at: false,
     feedback_intent: null, scope: null, strength: null, preference: null, keywords: [],
-    aspects: [], rule_kind: null, rule_keyword: null, outcome: null, housing_name: null,
+    aspects: [], rule_kind: null, rule_keyword: null, rule_id: null, outcome: null, housing_name: null,
     cutoff_priority: null, cutoff_score: null, supply_units: null, reached_priority: null,
     announcement_date: null, question: null,
     ...overrides,
@@ -92,4 +92,18 @@ test("exposes a direct replied item as target index one to the model", () => {
   );
   assert.match(prompt, /\"index\":1/);
   assert.match(prompt, /\"domain\":\"jobs\"/);
+});
+
+test("routes missing-recommendation questions with a grounded search phrase", () => {
+  const interpreted = normalizeMessageInterpretation(raw({
+    route: "recommendation_explain", domain: "jobs", title: "큐픽스",
+  }), { text: "큐픽스 공고 왜 안 보여?" });
+  assert.equal(interpreted.route, "recommendation_explain");
+  assert.equal(interpreted.title, "큐픽스");
+
+  const missingTarget = normalizeMessageInterpretation(raw({
+    route: "recommendation_explain", domain: null,
+  }), { text: "그 공고 왜 안 보여?" });
+  assert.equal(missingTarget.route, "not_supported");
+  assert.match(missingTarget.clarification, /회사명|공고 제목/);
 });

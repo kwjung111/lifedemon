@@ -1,4 +1,5 @@
 import { sendMoreRecommendations, sendMorningBriefing } from "./report.mjs";
+import { sendRecommendationExplanation } from "./visibility.mjs";
 
 function pageOffset(domain, context) {
   if (!context) return 0;
@@ -13,7 +14,9 @@ export const briefingBotModule = {
   commands: [{ command: "briefing", description: "☀️ 오늘의 통합 브리핑" }],
   canHandleCallback() { return false; },
   canHandleMessage(_message, context) {
-    return ["briefing_show", "recommendations_list", "recommendations_next"].includes(context?.semantic?.route);
+    return [
+      "briefing_show", "recommendations_list", "recommendations_next", "recommendation_explain",
+    ].includes(context?.semantic?.route);
   },
 
   async handleMessage(message, routedContext = null) {
@@ -23,6 +26,17 @@ export const briefingBotModule = {
       return true;
     }
     const semantic = routedContext?.semantic;
+    if (semantic?.route === "recommendation_explain") {
+      const target = semantic.targetIndex
+        ? (routedContext?.items || []).find((item) => Number(item.index) === semantic.targetIndex)
+        : null;
+      await sendRecommendationExplanation({
+        domain: target?.domain || semantic.domain,
+        query: semantic.title || semantic.question || text,
+        target,
+      });
+      return true;
+    }
     if (["recommendations_list", "recommendations_next"].includes(semantic?.route)
       && ["jobs", "housing"].includes(semantic.domain)) {
       const offset = semantic.route === "recommendations_next" ? pageOffset(semantic.domain, routedContext) : 0;

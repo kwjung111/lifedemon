@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.17.0 - 2026-07-21
+
+### Added
+
+- Added natural `왜 안 보여?` explanations for job and housing recommendations.
+- Distinguished applied, ignored, durable-rule, inactive, duplicate, expired, pending-review, failed-review, filter-excluded, and already-visible states from persisted evidence.
+- Kept explanation messages replyable so an incorrect applied/ignored action can be undone without another menu or button.
+
+### Safety
+
+- AI identifies only the requested domain and posting phrase; exclusion reasons are computed deterministically from current databases and recommendation snapshots.
+- Ambiguous names produce one numbered clarification and unknown postings never receive an invented explanation.
+
 ## 1.16.0 - 2026-07-21
 
 ### Changed

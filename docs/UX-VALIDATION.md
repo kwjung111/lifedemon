@@ -19,6 +19,7 @@ Three independent read-only reviews covered code integrity, realistic single-use
 | Impossible date | No JavaScript rollover; item is not saved | `test/inbox.test.mjs` |
 | First-time discovery | Seven visible commands and one short `/help` message | `test/manual.test.mjs` |
 | Free-form intent and target routing | One global AI call resolves navigation, Inbox, reminder, feedback, tracking, and manager intent; uncertainty makes no mutation | `test/message-interpreter.test.mjs`, `test/bot-runtime.test.mjs` |
+| Missing recommendation explanation | Ask with a company/title; receive one evidence-backed reason, or one numbered clarification for ambiguity | `test/visibility.test.mjs` |
 
 ## Cognitive-load constraints
 
@@ -29,6 +30,7 @@ Three independent read-only reviews covered code integrity, realistic single-use
 - The morning message remains the only scheduled weekday briefing.
 - Reply context is included in the single global interpretation, so the user does not need domain-specific correction commands.
 - Fixed commands stay immediate, while every free-form message uses one bounded global AI interpretation instead of expanding semantic phrase-regex lists or duplicate per-module calls.
+- Visibility explanations add no menu or per-item button and never ask the user to understand internal filter states.
 
 ## Known limits
 

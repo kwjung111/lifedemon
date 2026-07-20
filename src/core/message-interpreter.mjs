@@ -4,7 +4,7 @@ export const MESSAGE_ROUTES = [
   "reminder_create", "reminder_clarify", "reminder_cancel", "reminders_list",
   "inbox_create", "inbox_list", "inbox_next", "inbox_update", "inbox_complete",
   "inbox_cancel", "inbox_show", "inbox_reminder",
-  "recommendations_list", "recommendations_next",
+  "recommendations_list", "recommendations_next", "recommendation_explain",
   "feedback", "feedback_undo", "feedback_history", "feedback_rules_list", "feedback_rule_delete", "preference_rule",
   "housing_result", "housing_announcement_date",
   "manager_question", "briefing_show", "housing_status", "housing_guide", "job_status",
@@ -133,6 +133,7 @@ Choose exactly one route:
 - inbox_create: save a life item (event/task/watch/note/reference). Extract a concise title, optional event_at, next_action, URL, and explicit assumptions. Attachments can be inbox items.
 - inbox_list / inbox_next / inbox_show / inbox_update / inbox_complete / inbox_cancel / inbox_reminder: operate on Life Inbox. Use the replied item/list and target_index. inbox_reminder means create a reminder from an Inbox event.
 - recommendations_list / recommendations_next: show current/all or next-page recommendations. domain must be jobs or housing.
+- recommendation_explain: explain why a job or housing notice is missing, hidden, excluded, duplicated, expired, or already tracked. Extract the shortest identifying company/title phrase into title and set domain when inferable. When replying to an item or visibility-choice message, use target_index.
 - feedback: preference feedback about a replied recommendation. Set feedback_intent and target_index. "지원했어" is applied, not negative feedback.
 - feedback_undo / feedback_history: undo the previous feedback action, or show learned feedback history.
 - feedback_rules_list / feedback_rule_delete: show durable rules, or delete a rule. For deletion extract rule_id and domain from J/H notation or meaning.
@@ -147,6 +148,7 @@ Choose exactly one route:
 Rules:
 - Infer meaning semantically, including Korean slang, typos, omitted particles, and natural follow-ups. Do not rely on literal keywords.
 - A reply may inherit its domain and target only from REPLIED_MESSAGE_CONTEXT. A generic continuation may inherit jobs/housing only when unambiguous.
+- A reply to a visibility explanation that asks to restore/cancel its applied or ignored state is feedback_undo for that target, not a new cancellation request.
 - Never invent a target. target_index must equal one of the context item indexes. Use 1 for a single replied item.
 - Never invent a URL. Return a URL only when it appears verbatim in USER_MESSAGE.
 - Do not invent dates, money, eligibility, outcomes, or application facts.
@@ -227,6 +229,10 @@ export function normalizeMessageInterpretation(value, message, context = null, {
   if (route === "inbox_create" && !cleanText(value.title, 300)) {
     route = "not_supported";
     clarification ||= "저장할 내용을 조금 더 구체적으로 말해 주세요.";
+  }
+  if (route === "recommendation_explain" && !targetIndex && !cleanText(value.title, 300)) {
+    route = "not_supported";
+    clarification ||= "어떤 공고가 안 보이는지 회사명이나 공고 제목을 알려 주세요.";
   }
   if (route === "feedback" && !["positive", "negative", "mixed", "applied", "durable_rule", "undo"].includes(value.feedback_intent)) {
     route = "not_supported";

@@ -80,6 +80,10 @@ The Telegram command menu exposes only seven common actions. Existing advanced c
 
 If the interpreter is unavailable or uncertain, the bot performs no mutation and asks for a retry or one concise clarification. It never silently switches to a keyword parser.
 
+## Recommendation visibility explanations
+
+Ask naturally why a posting is missing, for example `큐픽스 공고 왜 안 보여?` or `2026년 1차 청년 매입임대 왜 목록에서 빠졌어?`. The global interpreter extracts only the domain and identifying phrase. Code compares the current application, feedback, durable-rule, source, review, deadline, deduplication, and complete recommendation state before returning one reason. Similar names produce one numbered clarification, and an unknown posting never receives a guessed explanation. Explanation messages retain their item context, so an incorrect `지원했어` or `관심없어` action can be undone by replying to that message.
+
 ## Low-friction feedback
 
 Housing and job digests keep only the primary `신청했어` or `지원했어` action
