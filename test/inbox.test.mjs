@@ -156,6 +156,23 @@ test("re-sends a stored attachment from a numbered list reply", async () => {
   assert.equal(calls[0].payload.document, "telegram-file");
 });
 
+test("prefers the attachment when an item also has a source link", async () => {
+  const item = createInboxItem({
+    kind: "reference", title: "링크 포함 계약서", nextAction: "검토", sourceUrl: "https://example.test/contract",
+    attachment: { type: "document", fileId: "dual-file" }, classifier: "rules", sourceMessageId: 450,
+  });
+  const calls = [];
+  const module = createInboxBotModule({
+    send: async () => ({ message_id: 1 }),
+    telegramApi: async (method, payload) => calls.push({ method, payload }),
+  });
+  await module.handleMessage({ message_id: 451, text: "1번 파일 보여줘", chat: { id: 1 } }, {
+    domain: "inbox", kind: "list", items: [{ index: 1, id: item.id, domain: "inbox", title: item.title }],
+  });
+  assert.equal(calls[0].payload.document, "dual-file");
+  assert.match(calls[0].payload.caption, /https:\/\/example\.test\/contract/);
+});
+
 test("opens a stored link and asks once when a list target is ambiguous", async () => {
   const linked = createInboxItem({
     kind: "watch", title: "참고 링크", nextAction: "확인", sourceUrl: "https://example.test/item",

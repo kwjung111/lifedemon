@@ -155,18 +155,23 @@ export function createInboxBotModule({
 
       if (target) {
         if (inboxRevisionForSource(target.id, message.message_id)) {
-          await send(itemMessage(getInboxItem(target.id), "이미 반영했어요"));
+          await send(itemMessage(getInboxItem(target.id), "이미 반영했어요"), {}, {
+            context: { domain: "inbox", kind: "item", entityId: target.id },
+          });
           return true;
         }
         if (isShowRequest(text)) {
-          if (target.source_url) await send(`🔗 ${target.title}\n${target.source_url}`);
-          else if (target.attachment?.fileId) {
+          const wantsLink = /링크/.test(text);
+          const wantsAttachment = /(?:파일|첨부)/.test(text);
+          if (target.attachment?.fileId && (wantsAttachment || !wantsLink)) {
             const methods = { document: ["sendDocument", "document"], photo: ["sendPhoto", "photo"], video: ["sendVideo", "video"], voice: ["sendVoice", "voice"] };
             const [method, field] = methods[target.attachment.type] || [];
             if (method) await telegramApi(method, {
-              chat_id: message.chat.id, [field]: target.attachment.fileId, caption: target.title.slice(0, 900),
+              chat_id: message.chat.id, [field]: target.attachment.fileId,
+              caption: `${target.title}${target.source_url ? `\n${target.source_url}` : ""}`.slice(0, 900),
             });
-          } else await send(itemMessage(target, "상세 내용이에요"));
+          } else if (target.source_url) await send(`🔗 ${target.title}\n${target.source_url}`);
+          else await send(itemMessage(target, "상세 내용이에요"));
           return true;
         }
         if (target.kind === "event" && /(?:알림.*등록|알려\s*줘|리마인드)/.test(text)) {

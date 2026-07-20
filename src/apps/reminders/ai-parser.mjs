@@ -51,8 +51,9 @@ export function looksLikeReminderClarification(text) {
   const remainder = value
     .replace(/20\d{2}[.\-/년]\s*\d{1,2}[.\-/월]\s*\d{1,2}일?/g, "")
     .replace(/오늘|내일|모레|이번\s*주|다음\s*주|월요일|화요일|수요일|목요일|금요일|토요일|일요일|오전|오후|\d{1,2}:\d{2}|\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?/g, "")
+    .replace(/(?:쯤|정도)/g, "")
     .replace(/[\s에야입니다.]/g, "");
-  return remainder.length <= 2;
+  return remainder.length === 0;
 }
 
 function promptFor(text, now) {

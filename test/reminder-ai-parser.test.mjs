@@ -71,6 +71,8 @@ test("only routes likely reminder intent to the AI parser", () => {
   assert.equal(looksLikeReminderRequest("여권 사본 위치 기억해줘"), false);
   assert.equal(looksLikeReminderClarification("내일 오후 4시"), true);
   assert.equal(looksLikeReminderClarification("새 문서 저장해줘"), false);
+  assert.equal(looksLikeReminderClarification("내일 오후 4시 회의"), false);
+  assert.equal(looksLikeReminderClarification("내일 오후 4시쯤"), true);
 });
 
 test("normalizes an AI-parsed reminder", async () => {
