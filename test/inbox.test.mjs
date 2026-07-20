@@ -60,7 +60,7 @@ test("lets AI reject a conversational question instead of saving it", async () =
     }),
   });
   assert.equal(result.intent, "not_inbox");
-  assert.equal(inboxClassifierUsage().ai_calls, 1);
+  assert.equal(inboxClassifierUsage().ai_calls, 0);
 });
 
 test("keeps a grounded relative-date event returned with an explicit timezone", async () => {

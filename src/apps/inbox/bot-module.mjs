@@ -145,7 +145,7 @@ export function createInboxBotModule({
       }
       let target = targetFromContext(replyContext, text);
       if (!target && latestReferenceRequest(text)) target = latestInboxItem({ activeOnly: true });
-      if (!target && standaloneAction(text)) {
+      if (!target && standaloneAction(text) && replyContext?.domain !== "inbox" && !contextItems(replyContext).length) {
         if (countInboxItems() === 1) target = latestInboxItem({ activeOnly: true });
         else {
           await send("어느 항목인지 선택해야 해요. /inbox 목록에 ‘2번 완료’처럼 답장해 주세요.");
