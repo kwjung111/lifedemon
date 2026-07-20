@@ -7,7 +7,7 @@ import {
 } from "./store.mjs";
 
 const kindLabels = {
-  event: "일정", task: "할 일", watch: "확인할 것", note: "메모", reference: "참고자료",
+  event: "일정으로", task: "할 일로", watch: "확인할 것으로", note: "메모로", reference: "참고자료로",
 };
 
 function kstDateTime(value) {
@@ -19,7 +19,7 @@ function kstDateTime(value) {
 }
 
 function itemMessage(item, lead = "저장했어요") {
-  const lines = [`✅ ${kindLabels[item.kind] || "항목"}으로 ${lead}.`, item.title];
+  const lines = [`✅ ${kindLabels[item.kind] || "항목으로"} ${lead}.`, item.title];
   if (item.event_at) lines.push(`시점: ${kstDateTime(item.event_at)}`);
   lines.push(`다음 행동: ${item.next_action}`);
   if (item.source_url) lines.push(item.source_url);
