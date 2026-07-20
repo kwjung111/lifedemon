@@ -10,6 +10,18 @@ export async function resolveHousingReminder(reminder) {
   const metadata = JSON.parse(reminder.metadata_json || "{}");
   if (metadata.source !== "SH") return { url: reminder.url, note: null };
 
+  const required = Array.isArray(metadata.keywords)
+    ? metadata.keywords.filter((keyword) => typeof keyword === "string" && keyword.trim())
+    : [];
+  if (required.length < 2) {
+    return {
+      url: shListUrl,
+      note: "공고를 안전하게 식별할 키워드가 부족해 자동 매칭하지 않았습니다.",
+      found: false,
+      matchedTitle: null,
+    };
+  }
+
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ locale: "ko-KR", timezoneId: "Asia/Seoul" });
@@ -19,7 +31,6 @@ export async function resolveHousingReminder(reminder) {
       text: (anchor.textContent || "").replace(/\s+/g, " ").trim(),
       onclick: anchor.getAttribute("onclick") || "",
     })));
-    const required = metadata.keywords || [];
     const candidates = links
       .map((link) => {
         const seq = link.onclick.match(/getDetailView\(['"]?(\d+)/)?.[1];
@@ -33,9 +44,9 @@ export async function resolveHousingReminder(reminder) {
 
     const found = candidates[0];
     if (found && found.score >= required.length + 10) {
-      return { url: shDetailUrl(found.seq), note: "SH 공식 발표 게시물을 자동으로 찾았습니다." };
+      return { url: shDetailUrl(found.seq), note: "SH 공식 발표 게시물을 자동으로 찾았습니다.", found: true, matchedTitle: found.text };
     }
-    return { url: shListUrl, note: "발표 게시물을 아직 찾지 못해 SH 공식 공고 목록을 연결합니다." };
+    return { url: shListUrl, note: "발표 게시물을 아직 찾지 못해 SH 공식 공고 목록을 연결합니다.", found: false, matchedTitle: null };
   } finally {
     await browser.close();
   }

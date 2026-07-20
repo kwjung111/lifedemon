@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 - 2026-07-20
+
+### Added
+
+- Due housing applications are checked hourly for official result announcements, with one-time Telegram buttons for recording the user's private outcome.
+- Application outcomes, cutoff score, supply count, reached priority, and private recommendation feedback are retained in the housing database and shown in `/housing_status`.
+- A private admin command records historical housing outcomes without committing personal data.
+
+### Changed
+
+- Housing recommendations now use past outcome feedback to prioritize larger supply and official evidence that allocation reached second or third priority, while keeping eligibility decisions independent.
+- SH result matching now requires enough distinctive announcement keywords to avoid associating an unrelated result notice.
+
 ## 1.2.5 - 2026-07-20
 
 ### Added

@@ -40,10 +40,25 @@ cp .env.example .env
 npm run bot
 npm run calendar:sync
 npm run housing:daily
+npm run housing:results
 npm run jobs:collect
 npm run jobs:filter
 npm run jobs:daily
 ```
+
+## Housing result feedback
+
+`housing-result-check.timer` checks due applications hourly on weekdays. When an
+official result announcement is found, Telegram asks the user to confirm the
+private document-screening outcome once. Replying with the housing name, cutoff,
+supply count, and how far allocation reached enriches later recommendations.
+Past outcomes never override hard eligibility rules; they only influence the
+ordering of otherwise relevant candidates. Personal outcomes and preferences
+remain in the ignored production SQLite database and are not committed.
+
+If a public result contains no stable personal identifier, the bot deliberately
+does not guess whether the user was selected. The official-announcement check is
+automatic, while that private outcome requires one Telegram tap.
 
 상시 Telegram gateway와 reminder worker, 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 서버가 예약 시각에 꺼져 있어도 부팅 후 누락 실행을 보충합니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다.
 

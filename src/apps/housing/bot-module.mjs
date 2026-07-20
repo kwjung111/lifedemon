@@ -1,17 +1,22 @@
 import {
   getNotice,
   addHousingRule,
+  applicationResult,
+  applicationResultCheck,
   disableHousingRule,
   listHousingRules,
   noticeForDigestItem,
   noticeForMessage,
   saveTelegramMessage,
+  saveApplicationResult,
+  setHousingRecommendationFeedback,
   setAnnouncementDate,
   setApplication,
 } from "../../db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { sendStatus } from "../../report.mjs";
 import { HOUSING_BASE_INSTRUCTION, parseRuleCommand } from "./instructions.mjs";
+import { parseHousingResultFeedback } from "./result-feedback.mjs";
 
 const appliedWords = /넣었|지원했|신청했|접수했/;
 const datePattern = /(20\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})/;
@@ -28,7 +33,7 @@ function callbackParts(data) {
 
 export const housingBotModule = {
   id: "housing",
-  help: "🏠 주거 공고\n/housing_status : 지원 진행 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n지침 예: ‘민간임대는 앞으로 제외해’",
+  help: "🏠 주거 공고\n/housing_status : 지원 및 결과 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n결과 알림에 답장: ‘미선정, 컷라인 1순위 5점, 21호 공급’\n지침 예: ‘민간임대는 앞으로 제외해’",
   commands: [
     { command: "housing_status", description: "🏠 지원 중인 주택 공고" },
     { command: "housing_guide", description: "🏠 공고 분석 기본 지침" },
@@ -55,6 +60,21 @@ export const housingBotModule = {
     } else if (action === "ig") {
       setApplication(id, "ignored");
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
+    } else if (["rs", "rn"].includes(action)) {
+      const outcome = action === "rs" ? "selected" : "not_selected";
+      const check = applicationResultCheck(id);
+      saveApplicationResult(id, {
+        stage: "document", outcome, source: "telegram",
+        officialUrl: check?.official_url || null,
+      });
+      await telegram("answerCallbackQuery", {
+        callback_query_id: query.id,
+        text: outcome === "selected" ? "서류심사 선정으로 저장했습니다." : "서류심사 미선정으로 저장했습니다.",
+      });
+      const confirmation = await sendMessage(
+        `${outcome === "selected" ? "✅ 서류심사 선정" : "❌ 서류심사 미선정"}으로 기록했습니다.\n${notice.title}\n\n컷라인·지원 주택·공급호수를 알면 이 메시지에 답장해 주세요. 다음 추천에 반영합니다.`,
+      );
+      saveTelegramMessage(confirmation.message_id, notice.id);
     }
   },
 
@@ -93,6 +113,31 @@ export const housingBotModule = {
     const replied = (itemNumber ? noticeForDigestItem(replyMessageId, itemNumber) : null)
       || noticeForMessage(replyMessageId);
     if (!replied) return false;
+
+    const feedback = parseHousingResultFeedback(text);
+    const previousResult = applicationResult(replied.id);
+    if (feedback.outcome || previousResult) {
+      const saved = saveApplicationResult(replied.id, {
+        stage: "document",
+        outcome: feedback.outcome || previousResult.outcome,
+        housingName: feedback.housingName,
+        cutoffPriority: feedback.cutoffPriority,
+        cutoffScore: feedback.cutoffScore,
+        supplyUnits: feedback.supplyUnits,
+        reachedPriority: feedback.reachedPriority,
+        note: feedback.note,
+        source: "telegram",
+      });
+      if (feedback.preference) setHousingRecommendationFeedback(feedback.preference);
+      await sendMessage([
+        "📝 지원 결과 피드백을 저장했습니다.",
+        saved.housing_name ? `지원 주택: ${saved.housing_name}` : null,
+        saved.cutoff_priority ? `컷라인: ${saved.cutoff_priority}순위${saved.cutoff_score != null ? ` ${saved.cutoff_score}점` : ""}` : null,
+        saved.supply_units ? `공급호수: ${saved.supply_units}호` : null,
+        feedback.preference ? `다음 추천 기준: ${feedback.preference}` : null,
+      ].filter(Boolean).join("\n"));
+      return true;
+    }
 
     if (appliedWords.test(text)) {
       setApplication(replied.id, "applied");

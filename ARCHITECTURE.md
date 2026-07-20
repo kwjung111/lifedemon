@@ -22,6 +22,8 @@ Job discovery is deliberately separated from job filtering. The collectors read 
 
 Housing decisions separate hard eligibility from practical value. The score is calculated from bounded components: housing value (40), selection chance (30), and execution readiness (30). When eligibility or official evidence remains uncertain, Telegram retains the component total but labels it `(추정)` and shows the critical user facts and missing official evidence.
 
+Applied housing notices are also scanned by an independent hourly result worker after their announcement date. It conservatively discovers the official result notice, then asks for a one-tap private outcome confirmation when public evidence cannot identify the user safely. Outcome, cutoff, supply count, reached priority, and recommendation feedback stay in `housing.sqlite`. This history may reorder suitable candidates toward larger supply and evidenced second- or third-priority reach, but it never changes hard eligibility.
+
 The private housing profile is loaded from `HOUSING_USER_PROFILE_FILE` and is never committed. A canonical fingerprint, not the profile itself, is stored with reviews. Changing the profile automatically invalidates and requeues active candidate reviews. Because this is a single-user bot, assessment output may retain exact profile values in SQLite and Telegram.
 
 Review rows are also gated by a versioned decision policy. Queue claims carry a unique token and a one-hour fallback lease; a timed-out daily worker releases its claims immediately. The daily service runs review work in a killable child process with a 45-minute hard deadline, preserving time for the Telegram digest inside the two-hour systemd window.

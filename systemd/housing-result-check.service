@@ -1,0 +1,15 @@
+[Unit]
+Description=Check official housing application results and request private outcome feedback
+After=network-online.target
+Wants=network-online.target
+OnFailure=monitor-failure-notify@%n.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/data/crawler
+EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
+ExecStart=/usr/local/bin/node --no-network-family-autoselection /data/crawler/src/housing-results.mjs
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true

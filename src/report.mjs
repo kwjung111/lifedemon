@@ -1,4 +1,4 @@
-import { activeNotices, appliedNotices, exhaustedReviewCount, getSetting, saveDigestItems } from "./db.mjs";
+import { activeNotices, appliedNotices, exhaustedReviewCount, getSetting, housingOutcomeFeedback, recentApplicationResults, saveDigestItems } from "./db.mjs";
 import { scoreLabel } from "./apps/housing/scoring.mjs";
 import { sendMessage } from "./telegram.mjs";
 
@@ -23,11 +23,40 @@ function dday(date) {
 
 export async function sendStatus() {
   const applied = appliedNotices();
-  if (!applied.length) return sendMessage("현재 ‘지원함’으로 등록된 공고가 없습니다.");
+  const results = recentApplicationResults(5);
+  if (!applied.length && !results.length) return sendMessage("현재 지원 또는 결과 이력이 없습니다.");
   const lines = applied.map((notice, index) =>
     `${index + 1}. [${notice.source}] ${notice.title}\n   발표: ${dday(notice.effective_announcement_date)}`
   );
-  return sendMessage(`📌 지원 진행 중\n\n${lines.join("\n\n")}`);
+  const outcomeLabel = { selected: "선정", not_selected: "미선정", waitlisted: "예비", unknown: "확인 필요" };
+  const resultLines = results.map((result) =>
+    `• ${outcomeLabel[result.outcome] || result.outcome} · ${result.housing_name || result.title}${result.cutoff_priority ? `\n  컷라인 ${result.cutoff_priority}순위${result.cutoff_score != null ? ` ${result.cutoff_score}점` : ""}` : ""}`
+  );
+  return sendMessage([
+    applied.length ? `📌 지원 진행 중\n\n${lines.join("\n\n")}` : null,
+    results.length ? `📊 최근 지원 결과\n\n${resultLines.join("\n\n")}` : null,
+  ].filter(Boolean).join("\n\n"));
+}
+
+function resultPreferenceRank(notice, feedback) {
+  if (!feedback.preference) return [0, 0];
+  let ai = null;
+  try { ai = JSON.parse(notice.ai_result_json || "null"); } catch { /* no structured review */ }
+  const evidence = JSON.stringify({
+    units: ai?.units, target: ai?.target_conditions, summary: ai?.summary,
+    cautions: ai?.cautions, evidence: ai?.evidence,
+  });
+  const supplyUnits = Number(String(ai?.units || "").match(/(\d[\d,]*)\s*호/)?.[1]?.replace(/,/g, "") || 0);
+  const reachedPriority = Number(evidence.match(/([123])\s*순위까지/)?.[1] || 0);
+  return [reachedPriority >= 2 ? reachedPriority : 0, supplyUnits];
+}
+
+export function rankHousingCandidates(candidates, feedback = housingOutcomeFeedback()) {
+  return [...candidates].sort((left, right) => {
+    const [leftPriority, leftUnits] = resultPreferenceRank(left, feedback);
+    const [rightPriority, rightUnits] = resultPreferenceRank(right, feedback);
+    return rightPriority - leftPriority || rightUnits - leftUnits || (right.ai_score || 0) - (left.ai_score || 0);
+  });
 }
 
 export async function sendDailyReport(summary = [], reviewSummary = []) {
@@ -46,7 +75,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
     seen.add(key);
     return true;
   });
-  const candidates = allCandidates;
+  const candidates = rankHousingCandidates(allCandidates);
   const exhaustedReviews = exhaustedReviewCount();
   const deferredReviews = reviewSummary.filter((item) => item.deferred).reduce((sum, item) => sum + (item.count || 0), 0);
   const completedReviews = reviewSummary.filter((item) => !item.error && !item.deferred).length;

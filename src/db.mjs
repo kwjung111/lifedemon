@@ -43,6 +43,37 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS application_results (
+    notice_id TEXT NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    housing_name TEXT,
+    cutoff_priority INTEGER,
+    cutoff_score INTEGER,
+    supply_units INTEGER,
+    reached_priority INTEGER,
+    official_url TEXT,
+    note TEXT,
+    source TEXT NOT NULL,
+    checked_at TEXT,
+    recorded_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(notice_id, stage)
+  );
+
+  CREATE TABLE IF NOT EXISTS application_result_checks (
+    notice_id TEXT NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    official_url TEXT,
+    matched_title TEXT,
+    last_error TEXT,
+    checked_at TEXT NOT NULL,
+    prompted_at TEXT,
+    PRIMARY KEY(notice_id, stage)
+  );
+
   CREATE TABLE IF NOT EXISTS telegram_messages (
     message_id INTEGER PRIMARY KEY,
     notice_id TEXT NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
@@ -364,6 +395,124 @@ export function appliedNotices() {
   `).all();
 }
 
+const resultOutcomes = new Set(["selected", "not_selected", "waitlisted", "unknown"]);
+const resultStages = new Set(["document", "final"]);
+
+export function saveApplicationResult(noticeIdValue, fields = {}) {
+  const stage = resultStages.has(fields.stage) ? fields.stage : "document";
+  const outcome = resultOutcomes.has(fields.outcome) ? fields.outcome : "unknown";
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO application_results(
+      notice_id, stage, outcome, housing_name, cutoff_priority, cutoff_score,
+      supply_units, reached_priority, official_url, note, source,
+      checked_at, recorded_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(notice_id, stage) DO UPDATE SET
+      outcome=excluded.outcome,
+      housing_name=COALESCE(excluded.housing_name, application_results.housing_name),
+      cutoff_priority=COALESCE(excluded.cutoff_priority, application_results.cutoff_priority),
+      cutoff_score=COALESCE(excluded.cutoff_score, application_results.cutoff_score),
+      supply_units=COALESCE(excluded.supply_units, application_results.supply_units),
+      reached_priority=COALESCE(excluded.reached_priority, application_results.reached_priority),
+      official_url=COALESCE(excluded.official_url, application_results.official_url),
+      note=COALESCE(excluded.note, application_results.note),
+      source=excluded.source,
+      checked_at=COALESCE(excluded.checked_at, application_results.checked_at),
+      updated_at=excluded.updated_at
+  `).run(
+    noticeIdValue, stage, outcome, fields.housingName || null,
+    Number.isFinite(fields.cutoffPriority) ? fields.cutoffPriority : null,
+    Number.isFinite(fields.cutoffScore) ? fields.cutoffScore : null,
+    Number.isFinite(fields.supplyUnits) ? fields.supplyUnits : null,
+    Number.isFinite(fields.reachedPriority) ? fields.reachedPriority : null,
+    fields.officialUrl || null, fields.note || null, fields.source || "telegram",
+    fields.checkedAt || null, timestamp, timestamp,
+  );
+  const applicationStatus = outcome === "not_selected" ? "not_selected"
+    : stage === "final" && outcome === "selected" ? "selected"
+      : "applied";
+  setApplication(noticeIdValue, applicationStatus, { note: fields.note || null });
+  return applicationResult(noticeIdValue, stage);
+}
+
+export function applicationResult(noticeIdValue, stage = "document") {
+  return db.prepare("SELECT * FROM application_results WHERE notice_id=? AND stage=?").get(noticeIdValue, stage) || null;
+}
+
+export function recentApplicationResults(limit = 10) {
+  return db.prepare(`
+    SELECT r.*, n.source AS notice_source, n.title
+    FROM application_results r JOIN notices n ON n.id=r.notice_id
+    ORDER BY r.updated_at DESC LIMIT ?
+  `).all(limit);
+}
+
+export function dueApplicationResultChecks(today, staleBefore, limit = 10) {
+  return db.prepare(`
+    SELECT n.*, a.applied_at,
+           COALESCE(a.announcement_date, n.announcement_date) AS effective_announcement_date,
+           c.state AS result_check_state, c.attempts AS result_check_attempts,
+           c.checked_at AS result_checked_at, c.prompted_at AS result_prompted_at
+    FROM applications a JOIN notices n ON n.id=a.notice_id
+    LEFT JOIN application_results r ON r.notice_id=n.id AND r.stage='document'
+    LEFT JOIN application_result_checks c ON c.notice_id=n.id AND c.stage='document'
+    WHERE a.status='applied'
+      AND COALESCE(a.announcement_date, n.announcement_date) IS NOT NULL
+      AND COALESCE(a.announcement_date, n.announcement_date)<=?
+      AND r.notice_id IS NULL
+      AND (c.checked_at IS NULL OR c.checked_at<=?)
+    ORDER BY COALESCE(a.announcement_date, n.announcement_date) ASC
+    LIMIT ?
+  `).all(today, staleBefore, limit);
+}
+
+export function saveApplicationResultCheck(noticeIdValue, fields = {}) {
+  const stage = resultStages.has(fields.stage) ? fields.stage : "document";
+  const timestamp = fields.checkedAt || now();
+  db.prepare(`
+    INSERT INTO application_result_checks(
+      notice_id, stage, state, attempts, official_url, matched_title,
+      last_error, checked_at, prompted_at
+    ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)
+    ON CONFLICT(notice_id, stage) DO UPDATE SET
+      state=excluded.state, attempts=application_result_checks.attempts+1,
+      official_url=COALESCE(excluded.official_url, application_result_checks.official_url),
+      matched_title=COALESCE(excluded.matched_title, application_result_checks.matched_title),
+      last_error=excluded.last_error, checked_at=excluded.checked_at,
+      prompted_at=COALESCE(application_result_checks.prompted_at, excluded.prompted_at)
+  `).run(
+    noticeIdValue, stage, fields.state || "not_found", fields.officialUrl || null,
+    fields.matchedTitle || null, fields.error || null, timestamp, fields.promptedAt || null,
+  );
+  return applicationResultCheck(noticeIdValue, stage);
+}
+
+export function applicationResultCheck(noticeIdValue, stage = "document") {
+  return db.prepare("SELECT * FROM application_result_checks WHERE notice_id=? AND stage=?").get(noticeIdValue, stage) || null;
+}
+
+export function markApplicationResultPrompted(noticeIdValue, stage = "document", promptedAt = now()) {
+  return db.prepare(`
+    UPDATE application_result_checks SET prompted_at=?
+    WHERE notice_id=? AND stage=? AND prompted_at IS NULL
+  `).run(promptedAt, noticeIdValue, stage).changes > 0;
+}
+
+export function housingOutcomeFeedback(limit = 10) {
+  const preference = getSetting("housing_recommendation_feedback", "");
+  const outcomes = recentApplicationResults(limit).map((row) => ({
+    stage: row.stage, outcome: row.outcome, housing_name: row.housing_name,
+    cutoff_priority: row.cutoff_priority, cutoff_score: row.cutoff_score,
+    supply_units: row.supply_units, reached_priority: row.reached_priority,
+  }));
+  return { preference, outcomes };
+}
+
+export function setHousingRecommendationFeedback(value) {
+  setSetting("housing_recommendation_feedback", String(value || "").trim());
+}
+
 export function getNotice(id) {
   return db.prepare("SELECT * FROM notices WHERE id = ?").get(id);
 }
@@ -375,7 +524,7 @@ export function setApplication(noticeIdValue, status, fields = {}) {
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(notice_id) DO UPDATE SET
       status=excluded.status,
-      applied_at=COALESCE(excluded.applied_at, applications.applied_at),
+      applied_at=COALESCE(applications.applied_at, excluded.applied_at),
       announcement_date=COALESCE(excluded.announcement_date, applications.announcement_date),
       note=COALESCE(excluded.note, applications.note),
       updated_at=excluded.updated_at

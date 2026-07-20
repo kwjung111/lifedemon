@@ -1,0 +1,11 @@
+[Unit]
+Description=Check due housing results hourly on weekdays
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09..20:10:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=0
+Unit=housing-result-check.service
+
+[Install]
+WantedBy=timers.target
