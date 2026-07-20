@@ -50,7 +50,7 @@ test("does not treat placeholder API keys as a fallback", async () => {
 test("retries reminder parsing with a valid API fallback key", async () => {
   const attempts = [];
   const result = await runReminderModel("parse", {
-    env: { CODEX_API_FALLBACK_KEY: "valid-secret" },
+    env: { CODEX_API_FALLBACK_KEY: "valid-secret", CODEX_API_FALLBACK_ENABLED: "true" },
     codexRunner: async ({ apiKey }) => {
       attempts.push(apiKey);
       if (!apiKey) throw new Error("usage limit reached");

@@ -5,13 +5,23 @@ export function createBotRuntime({
   modules,
   loadOffset,
   saveOffset,
+  beginUpdate = () => ({ status: "processing", attempts: 1 }),
+  completeUpdate = () => null,
+  failUpdate = () => ({ status: "pending", attempts: 1 }),
+  allowedUserId = allowedChatId,
   log = console.log,
 }) {
   const allowedChat = String(allowedChatId);
+  const allowedUser = String(allowedUserId);
+
+  function authorized({ chat, from }) {
+    return String(chat?.id || "") === allowedChat
+      && String(from?.id || "") === allowedUser
+      && chat?.type === "private";
+  }
 
   async function handleCallback(query) {
-    const callbackChat = String(query.message?.chat?.id || "");
-    if (callbackChat !== allowedChat) {
+    if (!authorized({ chat: query.message?.chat, from: query.from })) {
       await telegram("answerCallbackQuery", {
         callback_query_id: query.id,
         text: "권한이 없습니다.",
@@ -28,7 +38,7 @@ export function createBotRuntime({
   }
 
   async function handleMessage(message) {
-    if (String(message.chat?.id || "") !== allowedChat) return;
+    if (!authorized(message)) return;
     const text = String(message.text || "").trim();
     if (!text) return;
     const routeMeta = {
@@ -61,6 +71,30 @@ export function createBotRuntime({
     await sendMessage("어떤 알림에 대한 요청인지 확인하지 못했습니다. /help를 보내 사용법을 확인해 주세요.");
   }
 
+  async function handleUpdate(update) {
+    const inbox = beginUpdate(update);
+    if (["done", "dead"].includes(inbox.status)) return { committed: true, skipped: true };
+    try {
+      if (update.callback_query) await handleCallback(update.callback_query);
+      if (update.message) await handleMessage(update.message);
+      completeUpdate(update.update_id);
+      return { committed: true, skipped: false };
+    } catch (error) {
+      const failed = failUpdate(update.update_id, error.message);
+      if (failed.status !== "dead") throw error;
+      try {
+        await sendMessage(
+          `⚠️ Telegram 요청 처리에 3회 실패해 보류했습니다.\nupdate ${update.update_id}\n${error.message}`,
+          {},
+          { dedupeKey: `telegram-update-dead:${update.update_id}` },
+        );
+      } catch (alertError) {
+        log(`Dead-update alert queued but not delivered yet: ${alertError.message}`);
+      }
+      return { committed: true, dead: true };
+    }
+  }
+
   async function run() {
     let offset = Number(loadOffset() || 0);
     console.log(`Telegram gateway started with ${modules.length} module(s) for chat ${allowedChat.slice(0, 3)}***`);
@@ -72,10 +106,12 @@ export function createBotRuntime({
           allowed_updates: ["message", "callback_query"],
         });
         for (const update of updates) {
-          offset = update.update_id + 1;
-          saveOffset(offset);
-          if (update.callback_query) await handleCallback(update.callback_query);
-          if (update.message) await handleMessage(update.message);
+          try {
+            const result = await handleUpdate(update);
+            if (!result.committed) continue;
+            offset = update.update_id + 1;
+            saveOffset(offset);
+          } catch (error) { throw error; }
         }
       } catch (error) {
         console.error(new Date().toISOString(), error.message);
@@ -84,5 +120,5 @@ export function createBotRuntime({
     }
   }
 
-  return { run, handleMessage, handleCallback };
+  return { run, handleMessage, handleCallback, handleUpdate, authorized };
 }

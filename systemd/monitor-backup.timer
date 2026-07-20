@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Life Daemon state backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=0
+Unit=monitor-backup.service
+
+[Install]
+WantedBy=timers.target

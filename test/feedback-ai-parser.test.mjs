@@ -41,7 +41,7 @@ test("uses linked Codex first and exposes only public digest fields", async () =
 test("falls back to API only for linked-account quota or authentication errors", async () => {
   const attempts = [];
   await runFeedbackModel("prompt", {
-    env: { CODEX_API_FALLBACK_KEY: "valid-key" },
+    env: { CODEX_API_FALLBACK_KEY: "valid-key", CODEX_API_FALLBACK_ENABLED: "true" },
     codexRunner: async ({ apiKey }) => {
       attempts.push(apiKey);
       if (!apiKey) throw new Error("usage limit reached");
@@ -52,7 +52,7 @@ test("falls back to API only for linked-account quota or authentication errors",
 
   let transientAttempts = 0;
   await assert.rejects(() => runFeedbackModel("prompt", {
-    env: { CODEX_API_FALLBACK_KEY: "valid-key" },
+    env: { CODEX_API_FALLBACK_KEY: "valid-key", CODEX_API_FALLBACK_ENABLED: "true" },
     codexRunner: async () => { transientAttempts += 1; throw new Error("temporary network failure"); },
   }));
   assert.equal(transientAttempts, 1);

@@ -1,8 +1,4 @@
-import {
-  apiFallbackKey,
-  runCodexStructuredOnce,
-  shouldFallbackToApi,
-} from "../../core/codex-structured.mjs";
+import { runCodexStructuredOnce, runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 import { redactSecrets } from "../../core/redact.mjs";
 import {
   diagnosticToolNames,
@@ -107,13 +103,7 @@ async function runDecision(prompt, { runner, env }) {
     timeoutMs: 60_000,
     taskName: "Life Daemon read-only investigation",
   };
-  try {
-    return await runner({ ...options, apiKey: null });
-  } catch (error) {
-    const fallbackKey = apiFallbackKey(env);
-    if (!fallbackKey || !shouldFallbackToApi(error)) throw error;
-    return runner({ ...options, apiKey: fallbackKey });
-  }
+  return runCodexStructuredWithFallback({ ...options, codexRunner: runner });
 }
 
 function callKey(call) {

@@ -16,13 +16,14 @@ while (true) {
       deliverDueReminders: async () => {
         for (const reminder of dueReminders()) {
           const resolved = await resolveReminder(reminder);
-          await sendMessage(
+          const delivered = await sendMessage(
             `⏰ 알림\n\n${reminder.title}\n시각: ${formatReminderTime(reminder.due_at)}${
               resolved.note ? `\n${resolved.note}` : ""
             }${resolved.url ? `\n\n확인: ${resolved.url}` : ""}`,
             {},
             { dedupeKey: `reminder:${reminder.id}` },
           );
+          if (!delivered?.message_id) throw new Error(`Reminder ${reminder.id} was not confirmed delivered`);
           markReminderFired(reminder.id);
         }
       },

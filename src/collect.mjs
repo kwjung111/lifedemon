@@ -124,6 +124,7 @@ export async function collectAll() {
     for (const source of sources) {
       try {
         const notices = await collectSource(context, source, rules);
+        if (!notices.length) throw new Error(`${source.name} returned zero validated notices; prior active state retained`);
         const changes = notices.map((notice) => upsertNoticeWithStatus(notice));
         const deactivatedCount = markSourceCollectionComplete(source.name, changes.map(({ id }) => id));
         summary.push({

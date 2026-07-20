@@ -45,6 +45,7 @@ db.exec(`
     subject_value TEXT,
     raw_text TEXT,
     metadata_json TEXT,
+    source_key TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -92,6 +93,23 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS telegram_outbox_due
   ON telegram_outbox(status, available_at);
+
+  CREATE TABLE IF NOT EXISTS telegram_updates (
+    update_id INTEGER PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS api_fallback_usage (
+    usage_date TEXT PRIMARY KEY,
+    calls INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 db.exec("BEGIN IMMEDIATE");
@@ -106,10 +124,14 @@ try {
   const feedbackColumns = new Set(db.prepare("PRAGMA table_info(feedback_events)").all().map((column) => column.name));
   if (!feedbackColumns.has("reverted_at")) db.exec("ALTER TABLE feedback_events ADD COLUMN reverted_at TEXT");
   if (!feedbackColumns.has("revert_text")) db.exec("ALTER TABLE feedback_events ADD COLUMN revert_text TEXT");
+  if (!feedbackColumns.has("source_key")) db.exec("ALTER TABLE feedback_events ADD COLUMN source_key TEXT");
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS reminders_google_event
     ON reminders(google_calendar_id, google_event_id)
     WHERE google_calendar_id IS NOT NULL AND google_event_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS feedback_event_source
+    ON feedback_events(domain, source_key, entity_id, signal)
+    WHERE source_key IS NOT NULL;
   `);
   db.exec("COMMIT");
 } catch (error) {
@@ -130,34 +152,101 @@ export function setPlatformSetting(key, value) {
   `).run(key, String(value));
 }
 
+export function beginTelegramUpdate(update) {
+  const updateId = Number(update?.update_id);
+  if (!Number.isInteger(updateId)) throw new Error("Telegram update needs an integer update_id");
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO telegram_updates(update_id, payload_json, status, attempts, created_at, updated_at)
+    VALUES (?, ?, 'pending', 0, ?, ?)
+    ON CONFLICT(update_id) DO NOTHING
+  `).run(updateId, JSON.stringify(update), timestamp, timestamp);
+  const current = db.prepare("SELECT * FROM telegram_updates WHERE update_id=?").get(updateId);
+  if (["done", "dead"].includes(current.status)) return current;
+  db.prepare(`
+    UPDATE telegram_updates
+    SET status='processing', attempts=attempts+1, updated_at=?
+    WHERE update_id=?
+  `).run(timestamp, updateId);
+  return db.prepare("SELECT * FROM telegram_updates WHERE update_id=?").get(updateId);
+}
+
+export function completeTelegramUpdate(updateId) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE telegram_updates SET status='done', last_error=NULL, updated_at=?, completed_at=?
+    WHERE update_id=?
+  `).run(timestamp, timestamp, updateId);
+  return db.prepare("SELECT * FROM telegram_updates WHERE update_id=?").get(updateId);
+}
+
+export function failTelegramUpdate(updateId, error, maxAttempts = 3) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE telegram_updates
+    SET status=CASE WHEN attempts>=? THEN 'dead' ELSE 'pending' END,
+        last_error=?, updated_at=?
+    WHERE update_id=?
+  `).run(maxAttempts, String(error || "update failed").slice(0, 1000), timestamp, updateId);
+  return db.prepare("SELECT * FROM telegram_updates WHERE update_id=?").get(updateId);
+}
+
+export function reserveApiFallbackCall({ date, limit = 10 } = {}) {
+  const usageDate = date || new Date().toISOString().slice(0, 10);
+  const maxCalls = Math.max(0, Math.min(1000, Number(limit) || 0));
+  if (!maxCalls) return { allowed: false, calls: 0, limit: 0, date: usageDate };
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO api_fallback_usage(usage_date, calls, updated_at)
+    VALUES (?, 1, ?)
+    ON CONFLICT(usage_date) DO UPDATE SET calls=calls+1, updated_at=excluded.updated_at
+    WHERE calls<?
+  `).run(usageDate, timestamp, maxCalls);
+  const usage = db.prepare("SELECT calls FROM api_fallback_usage WHERE usage_date=?").get(usageDate)?.calls || 0;
+  return { allowed: result.changes > 0, calls: usage, limit: maxCalls, date: usageDate };
+}
+
 const feedbackSignals = new Set(["positive", "negative", "mixed", "applied", "ignored"]);
 
 export function recordFeedbackEvent({
   domain, entityId, signal, subjectType = null, subjectValue = null,
-  rawText = null, metadata = null,
+  rawText = null, metadata = null, sourceKey = null,
 }) {
   if (!domain || !entityId || !feedbackSignals.has(signal)) throw new Error("invalid feedback event");
-  const metadataJson = metadata ? JSON.stringify(metadata).slice(0, 4000) : null;
+  const metadataJson = metadata ? JSON.stringify(metadata) : null;
   const result = db.prepare(`
-    INSERT INTO feedback_events(
+    INSERT OR IGNORE INTO feedback_events(
       domain, entity_id, signal, subject_type, subject_value,
-      raw_text, metadata_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      raw_text, metadata_json, source_key, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     String(domain), String(entityId), signal,
     subjectType ? String(subjectType) : null,
     subjectValue ? String(subjectValue) : null,
     rawText ? String(rawText).slice(0, 1000) : null,
     metadataJson,
+    sourceKey ? String(sourceKey).slice(0, 200) : null,
     now(),
   );
-  return db.prepare("SELECT * FROM feedback_events WHERE id=?").get(result.lastInsertRowid);
+  if (result.changes > 0) return db.prepare("SELECT * FROM feedback_events WHERE id=?").get(result.lastInsertRowid);
+  return db.prepare(`
+    SELECT * FROM feedback_events
+    WHERE domain=? AND source_key=? AND entity_id=? AND signal=?
+  `).get(String(domain), String(sourceKey), String(entityId), signal);
 }
 
 export function recentFeedbackEvents(limit = 20) {
   return db.prepare(`
     SELECT * FROM feedback_events WHERE reverted_at IS NULL ORDER BY id DESC LIMIT ?
   `).all(Math.max(1, Math.min(100, Number(limit) || 20)));
+}
+
+export function activePreferenceFeedbackEvents(domain) {
+  return db.prepare(`
+    SELECT * FROM feedback_events
+    WHERE reverted_at IS NULL AND domain=? AND signal IN ('positive', 'negative', 'mixed')
+    ORDER BY id DESC
+  `).all(domain);
 }
 
 export function latestFeedbackEvent({ domain = null, entityId = null } = {}) {
@@ -267,7 +356,7 @@ export function claimTelegramOutbox({ id = null, at = now(), staleBefore = null 
       WHERE status='pending' AND available_at<=?
       ORDER BY id LIMIT 1
     `).get(at)
-    : db.prepare("SELECT * FROM telegram_outbox WHERE id=? AND status='pending'").get(id);
+    : db.prepare("SELECT * FROM telegram_outbox WHERE id=? AND status='pending' AND available_at<=?").get(id, at);
   if (!row) return null;
   const claimed = db.prepare(`
     UPDATE telegram_outbox

@@ -1,4 +1,7 @@
-import { apiFallbackKey, runCodexStructuredOnce, shouldFallbackToApi } from "../../core/codex-structured.mjs";
+import { runCodexStructuredOnce, runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
+
+export const FEEDBACK_PROMPT_VERSION = "2";
+export const FEEDBACK_SCHEMA_VERSION = "2";
 
 export const feedbackInterpretationSchema = {
   type: "object",
@@ -51,13 +54,7 @@ export async function runFeedbackModel(prompt, {
     search: false,
     taskName: "feedback interpretation",
   };
-  try {
-    return await codexRunner({ ...options, apiKey: null });
-  } catch (error) {
-    const fallbackKey = apiFallbackKey(env);
-    if (!fallbackKey || !shouldFallbackToApi(error)) throw error;
-    return codexRunner({ ...options, apiKey: fallbackKey });
-  }
+  return runCodexStructuredWithFallback({ ...options, codexRunner });
 }
 
 function publicItems(items) {
@@ -126,6 +123,8 @@ export function normalizeFeedbackInterpretation(value, items) {
     reason: String(value.reason || "").replace(/\s+/g, " ").trim().slice(0, 500),
     clarification: value.clarification ? String(value.clarification).replace(/\s+/g, " ").trim().slice(0, 300) : null,
     source: "ai",
+    promptVersion: FEEDBACK_PROMPT_VERSION,
+    schemaVersion: FEEDBACK_SCHEMA_VERSION,
   };
   const actionable = ["positive", "negative", "mixed", "applied", "durable_rule"].includes(result.intent);
   if ((confidence < 75 || (actionable && !result.targetIndex)) && !["undo", "not_feedback"].includes(result.intent)) {
@@ -143,5 +142,8 @@ export async function interpretFeedback(text, { domain, items }, {
   modelRunner = runFeedbackModel,
 } = {}) {
   const prompt = feedbackPrompt(text, { domain, items });
-  return normalizeFeedbackInterpretation(await modelRunner(prompt), items);
+  return {
+    ...normalizeFeedbackInterpretation(await modelRunner(prompt), items),
+    model: process.env.FEEDBACK_AI_MODEL || "codex-default",
+  };
 }

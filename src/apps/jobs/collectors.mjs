@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { isIP } from "node:net";
 import { collectWantedWebSearch } from "./wanted-web-search.mjs";
 
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -7,6 +8,7 @@ const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 export const publicJobSources = [
   {
     name: "remember", detailPath: /\/job\/posting\/\d+/,
+    allowedHosts: ["career.rememberapp.co.kr"],
     listUrl(query) {
       const search = JSON.stringify({ includeAppliedJobPosting: false, leaderPosition: false, organizationType: "all", applicationType: "all", keywords: [query] });
       return `https://career.rememberapp.co.kr/job/postings?search=${encodeURIComponent(search)}`;
@@ -14,20 +16,60 @@ export const publicJobSources = [
   },
   {
     name: "wanted",
-    detailPath: /\/wd\/\d+/, collector: "codex-web-search",
+    detailPath: /\/wd\/\d+/, collector: "codex-web-search", allowedHosts: ["www.wanted.co.kr", "wanted.co.kr"],
   },
   {
     name: "jobkorea",
+    allowedHosts: ["www.jobkorea.co.kr", "jobkorea.co.kr"],
     listUrl: (query) => `https://www.jobkorea.co.kr/Search/?stext=${encodeURIComponent(query)}`,
     detailPath: /\/Recruit\/GI_Read\//i,
   },
 ];
 
+function privateHostname(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (["localhost", "localhost.localdomain"].includes(host) || host.endsWith(".local")) return true;
+  if (isIP(host) === 4) {
+    const [a, b] = host.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  if (isIP(host) === 6) return host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd");
+  return false;
+}
+
+export function checkedJobUrl(value, source) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || privateHostname(url.hostname) || !source.allowedHosts?.includes(url.hostname.toLowerCase())) {
+    throw new Error(`${source.name} URL allowlist rejected ${url.hostname}`);
+  }
+  return url;
+}
+
+async function guardJobRequests(context, source) {
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    try {
+      const url = new URL(request.url());
+      if (["data:", "blob:", "about:"].includes(url.protocol)) return route.continue();
+      if (privateHostname(url.hostname)) return route.abort("blockedbyclient");
+      if (request.isNavigationRequest() && request.resourceType() === "document") checkedJobUrl(url.href, source);
+      return route.continue();
+    } catch {
+      return route.abort("blockedbyclient");
+    }
+  });
+}
+
 export function linksForSource(source, anchors, query = "") {
   const seen = new Set();
   const normalizedQuery = clean(query).toLowerCase();
   return anchors
-    .filter((anchor) => source.detailPath.test(anchor.href) && clean(anchor.text).length >= 2)
+    .filter((anchor) => {
+      try { checkedJobUrl(anchor.href, source); return source.detailPath.test(new URL(anchor.href).pathname); }
+      catch { return false; }
+    })
+    .filter((anchor) => clean(anchor.text).length >= 2)
     .filter((anchor) => !normalizedQuery || clean(anchor.text).toLowerCase().includes(normalizedQuery))
     .filter((anchor) => {
       if (seen.has(anchor.href)) return false;
@@ -41,7 +83,8 @@ export function normalizePublicJob(source, detail) {
   const title = clean(detail.title);
   const company = clean(detail.company);
   if (!title || !company || !detail.url) return null;
-  const url = new URL(detail.url);
+  let url;
+  try { url = checkedJobUrl(detail.url, source); } catch { return null; }
   if (["remember", "jobkorea"].includes(source.name)) {
     url.search = "";
     url.hash = "";
@@ -86,8 +129,10 @@ async function anchorsOn(page) {
 }
 
 async function extractDetail(page, href, source) {
+  checkedJobUrl(href, source);
   const response = await page.goto(href, { waitUntil: "domcontentloaded", timeout: 45_000 });
   if (!response || response.status() >= 400) throw new Error(`${source.name} detail HTTP ${response?.status()}`);
+  checkedJobUrl(page.url(), source);
   await page.waitForTimeout(600);
   const bodyText = await page.locator("body").innerText();
   const rawText = clean(bodyText).slice(0, 60_000);
@@ -123,9 +168,12 @@ export async function collectPublicJobSource(source, { query = "", maxDetails = 
     const context = await browser.newContext({
       locale: "ko-KR", timezoneId: "Asia/Seoul", serviceWorkers: "block",
     });
+    await guardJobRequests(context, source);
     const page = await context.newPage();
-    const response = await page.goto(source.listUrl(query), { waitUntil: "domcontentloaded", timeout: 60_000 });
+    const listUrl = checkedJobUrl(source.listUrl(query), source).href;
+    const response = await page.goto(listUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (!response || response.status() >= 400) throw new Error(`${source.name} listing HTTP ${response?.status()}`);
+    checkedJobUrl(page.url(), source);
     await page.waitForTimeout(1_000);
     await page.waitForFunction(
       (pattern) => [...document.querySelectorAll("a")].some((anchor) => new RegExp(pattern, "i").test(anchor.href)),

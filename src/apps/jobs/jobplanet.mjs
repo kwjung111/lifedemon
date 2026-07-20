@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { chromium } from "playwright";
 import { normalizeCompanyName } from "./company-verification.mjs";
@@ -32,8 +32,10 @@ async function ensureSignedIn(page, context) {
   await page.getByRole("button", { name: "이메일로 로그인" }).click();
   await page.waitForTimeout(3_000);
   if (/user-session\/sign-in/.test(page.url()) || /로그인 \| 잡플래닛/.test(await page.title())) throw new Error("JobPlanet login did not complete; complete any required verification manually");
-  await mkdir(dirname(statePath()), { recursive: true });
+  await mkdir(dirname(statePath()), { recursive: true, mode: 0o700 });
+  await chmod(dirname(statePath()), 0o700);
   await context.storageState({ path: statePath() });
+  await chmod(statePath(), 0o600);
 }
 
 export async function lookupJobPlanetCompany(company) {

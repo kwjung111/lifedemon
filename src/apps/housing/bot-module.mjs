@@ -1,6 +1,7 @@
 import {
   getNotice,
   housingApplicationStatus,
+  housingRecommendationHidden,
   applicationResult,
   applicationResultCheck,
   disableHousingRule,
@@ -12,6 +13,7 @@ import {
   setHousingRecommendationFeedback,
   setAnnouncementDate,
   setApplication,
+  setHousingRecommendationHidden,
 } from "../../db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { sendStatus } from "../../report.mjs";
@@ -54,7 +56,11 @@ async function sendApplicationConfirmation(notice, intro) {
   if (confirmation?.message_id) saveTelegramMessage(confirmation.message_id, notice.id);
 }
 
-export const housingBotModule = {
+export function createHousingBotModule({
+  interpret = interpretFeedback,
+  aiEnabled = feedbackAiEnabled,
+} = {}) {
+  return {
   id: "housing",
   help: "🏠 주거 공고\n/housing_status : 지원 및 결과 현황\n/housing_guide : 공고 분석 기본 지침\n/housing_rules : 추가·제외 지침 목록\n브리핑에 답장: ‘3번 넣었어’, ‘3번 2026-08-10 발표’\n결과 알림에 답장: ‘미선정, 컷라인 2순위 7점, 50호 공급’\n지침 예: ‘민간임대는 앞으로 제외해’",
   commands: [
@@ -80,16 +86,19 @@ export const housingBotModule = {
       setApplication(id, "applied");
       recordFeedbackEvent({
         domain: "housing", entityId: id, signal: "applied", rawText: "telegram callback",
+        sourceKey: query.id ? `callback:${query.id}` : null,
         metadata: { title: notice.title, source: notice.source, previousApplicationStatus },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "지원 상태로 저장했습니다." });
       await sendApplicationConfirmation(notice, `✅ 지원 진행 중으로 저장했습니다.\n[${notice.source}] ${notice.title}`);
     } else if (action === "ig") {
       const previousApplicationStatus = housingApplicationStatus(id);
-      setApplication(id, "ignored");
+      const previousRecommendationHidden = housingRecommendationHidden(id);
+      setHousingRecommendationHidden(id, true);
       recordFeedbackEvent({
         domain: "housing", entityId: id, signal: "ignored", rawText: "telegram callback",
-        metadata: { title: notice.title, source: notice.source, previousApplicationStatus },
+        sourceKey: query.id ? `callback:${query.id}` : null,
+        metadata: { title: notice.title, source: notice.source, previousApplicationStatus, previousRecommendationHidden },
       });
       await telegram("answerCallbackQuery", { callback_query_id: query.id, text: "관심 없음으로 저장했습니다." });
     } else if (["rs", "rn"].includes(action)) {
@@ -154,6 +163,9 @@ export const housingBotModule = {
 
     if (!replyMessageId) return false;
     const deliveryContext = telegramMessageContext(replyMessageId);
+    const feedbackText = deliveryContext?.pendingFeedback
+      ? `${deliveryContext.pendingFeedback}\n추가 답변: ${text}`
+      : text;
     const candidates = noticesForDigest(replyMessageId).map((notice) => ({ ...notice, index: notice.item_no }));
     const directNotice = noticeForMessage(replyMessageId);
     if (directNotice) candidates.push({ ...directNotice, index: 1 });
@@ -169,23 +181,26 @@ export const housingBotModule = {
       if (notice && !candidates.some((candidate) => candidate.id === notice.id)) candidates.push({ ...notice, index: 1 });
     }
     if (!candidates.length) return false;
-    const localResolution = resolveFeedbackTarget(text, candidates);
-    const resultFeedback = parseHousingResultFeedback(text);
-    const directDate = normalizedDate(text);
+    const feedbackContext = { domain: "housing", kind: "digest", items: candidates.map((item) => ({ index: item.index, id: item.id })) };
+    const localResolution = resolveFeedbackTarget(feedbackText, candidates);
+    const resultFeedback = parseHousingResultFeedback(feedbackText);
+    const directDate = normalizedDate(feedbackText);
     const hasResultDetails = Boolean(
       resultFeedback.housingName || resultFeedback.cutoffPriority || resultFeedback.cutoffScore != null
       || resultFeedback.supplyUnits || resultFeedback.reachedPriority || resultFeedback.preference,
     );
 
     // Result facts, dates, and undo are state updates, not recommendation opinions.
-    if (undoFeedbackPattern.test(text)) {
+    if (undoFeedbackPattern.test(feedbackText)) {
       await sendMessage(formatUndoResult(undoLatestFeedback({
-        domain: "housing", entityId: localResolution.item?.id || null, text,
+        domain: "housing", entityId: localResolution.item?.id || null, text: feedbackText,
       })));
       return true;
     }
     if ((resultFeedback.outcome || directDate) && !localResolution.item) {
-      await sendMessage(feedbackTargetQuestion(candidates, localResolution));
+      await sendMessage(feedbackTargetQuestion(candidates, localResolution), {}, {
+        context: { ...feedbackContext, pendingFeedback: feedbackText },
+      });
       return true;
     }
     if (resultFeedback.outcome || (localResolution.item && applicationResult(localResolution.item.id) && hasResultDetails)) {
@@ -224,10 +239,13 @@ export const housingBotModule = {
     }
 
     let interpretation = null;
-    if (feedbackAiEnabled()) {
+    let aiFailed = false;
+    if (aiEnabled()) {
       try {
-        interpretation = await interpretFeedback(text, { domain: "housing", items: candidates });
+        telegram("sendChatAction", { chat_id: message.chat.id, action: "typing" }).catch(() => {});
+        interpretation = await interpret(feedbackText, { domain: "housing", items: candidates });
       } catch (error) {
+        aiFailed = true;
         console.error("Feedback AI failed; using deterministic fallback", error.message);
       }
     }
@@ -237,69 +255,91 @@ export const housingBotModule = {
     if (!interpretation) {
       replied = localResolution.item;
       if (!replied) {
-        await sendMessage(feedbackTargetQuestion(candidates, localResolution));
+        await sendMessage(feedbackTargetQuestion(candidates, localResolution), {}, {
+          context: { ...feedbackContext, pendingFeedback: feedbackText },
+        });
         return true;
       }
-      const parsed = parseEntityFeedback(text, { domain: "housing" });
+      const parsed = parseEntityFeedback(feedbackText, { domain: "housing" });
       if (!parsed) {
-        await sendMessage("뜻을 확실히 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 조금만 더 알려주세요.");
+        await sendMessage(aiFailed
+          ? "AI 해석기가 잠시 응답하지 않아 이 의견은 변경 없이 보류했어요. 잠시 뒤 같은 메시지에 다시 답장해 주세요."
+          : "뜻을 확실히 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 조금만 더 알려주세요.",
+        {}, { context: { ...feedbackContext, pendingFeedback: feedbackText } });
         return true;
       }
       interpretation = {
-        intent: parsed.signal, scope: "item", strength: "medium", preference: text,
+        intent: parsed.signal, scope: "item", strength: "medium", preference: feedbackText,
         keywords: [], aspects: [], confidence: 100, reason: "명시적 표현 규칙으로 해석", source: "rules",
       };
     }
     if (interpretation.intent === "clarify") {
-      await sendMessage(interpretation.clarification || "어느 공고에 대한 어떤 의견인지 조금만 더 알려주세요.");
+      await sendMessage(
+        interpretation.clarification || "어느 공고에 대한 어떤 의견인지 조금만 더 알려주세요.",
+        {}, { context: { ...feedbackContext, pendingFeedback: feedbackText } },
+      );
       return true;
     }
     if (interpretation.intent === "not_feedback") {
-      await sendMessage("공고에 대한 의견으로 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 알려주세요.");
+      await sendMessage("공고에 대한 의견으로 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 알려주세요.", {}, {
+        context: { ...feedbackContext, pendingFeedback: feedbackText },
+      });
       return true;
     }
     if (interpretation.intent === "undo") {
-      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied?.id || null, text })));
+      await sendMessage(formatUndoResult(undoLatestFeedback({ domain: "housing", entityId: replied?.id || null, text: feedbackText })));
       return true;
     }
     if (!replied) {
-      await sendMessage("어느 공고에 대한 의견인지 공고 번호나 이름을 한 번만 알려주세요.");
+      await sendMessage("어느 공고에 대한 의견인지 공고 번호나 이름을 한 번만 알려주세요.", {}, {
+        context: { ...feedbackContext, pendingFeedback: feedbackText },
+      });
       return true;
     }
     if (interpretation.intent === "applied") {
       const previousApplicationStatus = housingApplicationStatus(replied.id);
       setApplication(replied.id, "applied");
       recordFeedbackEvent({
-        domain: "housing", entityId: replied.id, signal: "applied", rawText: text,
+        domain: "housing", entityId: replied.id, signal: "applied", rawText: feedbackText,
+        sourceKey: message.message_id ? `message:${message.message_id}` : null,
         metadata: { title: replied.title, source: replied.source, previousApplicationStatus, interpretation },
       });
       await sendApplicationConfirmation(replied, `✅ 지원 진행 중으로 저장했습니다: ${replied.title}`);
       return true;
     }
     const previousApplicationStatus = housingApplicationStatus(replied.id);
+    const previousRecommendationHidden = housingRecommendationHidden(replied.id);
     const entityFeedback = saveInterpretedFeedback({
-      domain: "housing", entityId: replied.id, text, title: replied.title, source: replied.source,
-      interpretation, metadata: { previousApplicationStatus },
+      domain: "housing", entityId: replied.id, text: feedbackText, title: replied.title, source: replied.source,
+      interpretation, metadata: { previousApplicationStatus, previousRecommendationHidden },
+      sourceKey: message.message_id ? `message:${message.message_id}` : null,
+      ruleExists: (candidate) => listHousingRules().some((rule) => rule.kind === candidate.kind && rule.keyword === candidate.keyword),
     });
     if (entityFeedback) {
       if (entityFeedback.signal === "negative") {
-        setApplication(replied.id, "ignored");
+        setHousingRecommendationHidden(replied.id, true);
         if (entityFeedback.proposal) {
           await sendMessage(ruleProposalMessage(
             entityFeedback.proposal,
             "이 공고는 즉시 숨기고, 승인하면 같은 유형을 이후 공고에서도 제외",
-          ), { reply_markup: ruleProposalKeyboard(entityFeedback.proposal) });
+          ), { reply_markup: ruleProposalKeyboard(entityFeedback.proposal) }, { context: feedbackContext });
+        } else if (entityFeedback.alreadyActive) {
+          await sendMessage(`이미 앞으로 제외 중인 유형이에요. 현재 공고도 숨겼습니다.\n${replied.title}`, {}, { context: feedbackContext });
         } else {
-          await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n이 공고는 추천에서 제외했습니다.\n${replied.title}`);
+          await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n이 공고는 추천에서 제외했습니다.\n${replied.title}`, {}, { context: feedbackContext });
         }
       } else if (entityFeedback.signal === "mixed") {
-        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n좋고 아쉬운 점을 따로 저장했어요. 이 공고는 아직 숨기지 않았습니다.\n${replied.title}`);
+        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n좋고 아쉬운 점을 따로 저장했어요. 이 공고는 아직 숨기지 않았습니다.\n${replied.title}`, {}, { context: feedbackContext });
       } else {
-        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n다음 추천 순서에 반영합니다.\n${replied.title}`);
+        setHousingRecommendationHidden(replied.id, false);
+        await sendMessage(`👌 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n다음 추천 순서에 반영합니다.\n${replied.title}`, {}, { context: feedbackContext });
       }
       return true;
     }
     await sendMessage("피드백 의미를 안전하게 적용하지 못했어요. 의견을 조금만 더 구체적으로 알려주세요.");
     return true;
   },
-};
+  };
+}
+
+export const housingBotModule = createHousingBotModule();

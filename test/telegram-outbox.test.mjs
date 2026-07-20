@@ -10,7 +10,10 @@ process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
 
 const { createTelegramClient } = await import("../src/telegram.mjs");
-const { platformDb, telegramMessageContext, telegramOutboxHealth } = await import("../src/core/state.mjs");
+const {
+  claimTelegramOutbox, completeTelegramOutbox, enqueueTelegramOutbox,
+  platformDb, telegramMessageContext, telegramOutboxHealth,
+} = await import("../src/core/state.mjs");
 
 test.after(() => {
   platformDb.close();
@@ -56,4 +59,22 @@ test("keeps network failures pending and delivers them after connectivity recove
   const result = await recovered.flushTelegramOutbox();
   assert.equal(result.delivered, 1);
   assert.equal(telegramOutboxHealth().counts.delivered, 2);
+});
+
+test("waits for a concurrently claimed row instead of reporting queued as delivered", async () => {
+  const row = enqueueTelegramOutbox({
+    method: "sendMessage", payload: { chat_id: "1", text: "경합" }, dedupeKey: "test:claimed",
+  });
+  claimTelegramOutbox({ id: row.id });
+  let waits = 0;
+  const client = createTelegramClient({
+    fetchImpl: success(99), maxAttempts: 1, deliveryWaitMs: 2_000,
+    sleep: async () => {
+      waits += 1;
+      if (waits === 1) completeTelegramOutbox(row.id, { message_id: 77, date: 1 });
+    },
+  });
+  const result = await client.sendMessage("경합", {}, { dedupeKey: "test:claimed" });
+  assert.equal(result.message_id, 77);
+  assert.ok(waits >= 1);
 });

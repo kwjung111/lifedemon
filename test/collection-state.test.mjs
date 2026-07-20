@@ -45,6 +45,12 @@ test("does not deactivate notices from another source", () => {
   assert.equal(db.prepare("SELECT active FROM notices WHERE id='youth-a'").get().active, 1);
 });
 
+test("does not treat a zero-result scrape as proof that all notices closed", () => {
+  upsertNotice(notice("zero-safe", "HUG"));
+  assert.equal(markSourceCollectionComplete("HUG", []), 0);
+  assert.equal(db.prepare("SELECT active FROM notices WHERE id='zero-safe'").get().active, 1);
+});
+
 test("counts active reviews that exhausted all retries", () => {
   upsertNotice(notice("failed-a"));
   db.prepare("UPDATE review_queue SET state='error', attempts=3 WHERE notice_id='failed-a'").run();

@@ -1,7 +1,6 @@
 [Unit]
-Description=Check official housing application results and request private outcome feedback
+Description=Back up Life Daemon SQLite state
 After=network-online.target
-Wants=network-online.target
 OnFailure=monitor-failure-notify@%n.service
 
 [Service]
@@ -9,8 +8,8 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/data/crawler
 EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
-ExecStart=/usr/local/bin/node --no-network-family-autoselection /data/crawler/src/housing-results.mjs
-TimeoutStartSec=15min
+ExecStart=/usr/local/bin/node /data/crawler/src/admin/backup-data.mjs
+TimeoutStartSec=30min
 NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077

@@ -40,7 +40,7 @@ test("retries a quota failure with the configured API fallback key", async () =>
   const attempts = [];
   const jobs = await collectWantedWebSearch({
     queries: ["DevOps"],
-    env: { CODEX_API_FALLBACK_KEY: "fallback" },
+    env: { CODEX_API_FALLBACK_KEY: "fallback", CODEX_API_FALLBACK_ENABLED: "true" },
     gmailCandidates: async () => ({ urls: [], error: null }),
     codexRunner: async ({ apiKey }) => {
       attempts.push(apiKey);

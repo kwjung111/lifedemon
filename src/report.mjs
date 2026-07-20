@@ -1,7 +1,7 @@
 import { activeNotices, appliedNotices, exhaustedReviewCount, getSetting, housingOutcomeFeedback, recentApplicationResults, saveDigestItems } from "./db.mjs";
 import { scoreLabel } from "./apps/housing/scoring.mjs";
 import { sendMessage } from "./telegram.mjs";
-import { recentFeedbackEvents } from "./core/state.mjs";
+import { activePreferenceFeedbackEvents } from "./core/state.mjs";
 import { semanticPreferences, semanticPreferenceScore } from "./apps/feedback/preferences.mjs";
 
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
@@ -56,14 +56,19 @@ function resultPreferenceRank(notice, feedback) {
 export function rankHousingCandidates(
   candidates,
   feedback = housingOutcomeFeedback(),
-  preferences = semanticPreferences(recentFeedbackEvents(100), "housing"),
+  preferences = semanticPreferences(activePreferenceFeedbackEvents("housing"), "housing"),
 ) {
   return [...candidates].sort((left, right) => {
     const [leftPriority, leftUnits] = resultPreferenceRank(left, feedback);
     const [rightPriority, rightUnits] = resultPreferenceRank(right, feedback);
-    const semanticDifference = semanticPreferenceScore(right, preferences, "housing")
-      - semanticPreferenceScore(left, preferences, "housing");
-    return semanticDifference || rightPriority - leftPriority || rightUnits - leftUnits || (right.ai_score || 0) - (left.ai_score || 0);
+    const finalScore = (notice, priority, units) => {
+      const base = Number(notice.ai_score) || 0;
+      const outcomeBonus = feedback.preference ? Math.min(15, priority * 5) + Math.min(10, Math.floor(units / 4)) : 0;
+      const preferenceBonus = Math.max(-10, Math.min(10, semanticPreferenceScore(notice, preferences, "housing") * 2));
+      return base + outcomeBonus + preferenceBonus;
+    };
+    return finalScore(right, rightPriority, rightUnits) - finalScore(left, leftPriority, leftUnits)
+      || (right.ai_score || 0) - (left.ai_score || 0);
   });
 }
 
@@ -75,7 +80,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   const applied = appliedNotices();
   const seen = new Set();
   const allCandidates = notices.filter((notice) => {
-    if (notice.application_status || !["likely", "possible"].includes(notice.verdict)) return false;
+    if (notice.application_status === "applied" || notice.recommendation_hidden || !["likely", "possible"].includes(notice.verdict)) return false;
     if (notice.ai_eligibility === "no" || notice.ai_status === "closed") return false;
     if (notice.apply_end && notice.apply_end < today) return false;
     const key = notice.title.replace(/\s*\d+일전\s*$/, "").replace(/\s+/g, " ").trim();

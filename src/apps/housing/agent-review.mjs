@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 import {
   failNoticeReview,
   housingOutcomeFeedback,
@@ -12,7 +12,63 @@ import { fulfillNeeds, officialSearchSource, openOfficial } from "./official-too
 import { requireHousingProfile } from "./profile.mjs";
 import { normalizeAssessment } from "./scoring.mjs";
 
-const codexAuto = "/home/ubuntu/.local/bin/codex-auto";
+const stringArray = { type: "array", items: { type: "string" }, maxItems: 10 };
+const subscore = {
+  type: "object", additionalProperties: false,
+  properties: { score: { type: "number" }, reasons: stringArray },
+  required: ["score", "reasons"],
+};
+const component = (names) => ({
+  type: "object", additionalProperties: false,
+  properties: {
+    subscores: {
+      type: "object", additionalProperties: false,
+      properties: Object.fromEntries(names.map((name) => [name, subscore])),
+      required: names,
+    },
+  },
+  required: ["subscores"],
+});
+
+export const housingAssessmentSchema = {
+  type: "object", additionalProperties: false,
+  properties: {
+    eligibility: { type: "string", enum: ["yes", "no", "uncertain"] },
+    critical_unknowns: stringArray,
+    evidence_status: { type: "string", enum: ["complete", "partial", "missing"] },
+    evidence_gaps: stringArray,
+    value_breakdown: {
+      type: "object", additionalProperties: false,
+      properties: {
+        housing_value: component(["transit_access", "cost_value", "area_quality", "tenure_usefulness"]),
+        selection_chance: component(["target_priority_fit", "supply_competition", "residency_subscription"]),
+        execution: component(["application_timing", "condition_clarity", "application_readiness"]),
+      },
+      required: ["housing_value", "selection_chance", "execution"],
+    },
+    score: { type: ["number", "null"] },
+    status: { type: "string" }, summary: { type: "string" }, supply_type: { type: "string" },
+    region: { type: "string" }, apply_period: { type: "string" }, target_conditions: { type: "string" },
+    income_assets: { type: "string" }, costs: { type: "string" }, units: { type: "string" },
+    cautions: stringArray, evidence: stringArray,
+    needs: {
+      type: "array", maxItems: 2,
+      items: {
+        type: "object", additionalProperties: false,
+        properties: {
+          type: { type: "string", enum: ["open", "search"] }, url: { type: "string" },
+          source: { type: "string" }, query: { type: "string" }, purpose: { type: "string" },
+        },
+        required: ["type", "url", "source", "query", "purpose"],
+      },
+    },
+  },
+  required: [
+    "eligibility", "critical_unknowns", "evidence_status", "evidence_gaps", "value_breakdown", "score",
+    "status", "summary", "supply_type", "region", "apply_period", "target_conditions", "income_assets",
+    "costs", "units", "cautions", "evidence", "needs",
+  ],
+};
 
 function todayKst() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -20,37 +76,10 @@ function todayKst() {
   }).format(new Date());
 }
 
-function parseJson(output) {
-  const cleaned = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI output did not contain JSON");
-  return JSON.parse(cleaned.slice(start, end + 1));
-}
-
 function runCodex(prompt) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("/usr/bin/timeout", ["180s", codexAuto, "--ephemeral", prompt], {
-      cwd: "/data/crawler",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-12000); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Codex review failed (${code}): ${stderr.slice(-2500)}`));
-        return;
-      }
-      try {
-        resolve(parseJson(stdout));
-      } catch (error) {
-        reject(new Error(`Codex review returned invalid JSON: ${error.message}`));
-      }
-    });
+  return runCodexStructuredWithFallback({
+    prompt, schema: housingAssessmentSchema, env: process.env, timeoutMs: 180_000,
+    search: false, taskName: "housing assessment",
   });
 }
 

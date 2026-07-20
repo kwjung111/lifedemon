@@ -1,5 +1,5 @@
 import { createGmailClient, gmailConfig, wantedPostingUrls } from "../../integrations/gmail.mjs";
-import { apiFallbackKey, runCodexStructuredOnce, shouldFallbackToApi } from "../../core/codex-structured.mjs";
+import { runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 
 export { shouldFallbackToApi } from "../../core/codex-structured.mjs";
 
@@ -79,12 +79,6 @@ export function normalizeWantedSearchResult(payload) {
   return [...normalized.values()];
 }
 
-async function runCodexOnce({ prompt, env, apiKey, timeoutMs }) {
-  return runCodexStructuredOnce({
-    prompt, schema: wantedSearchSchema, env, apiKey, timeoutMs, search: true, taskName: "Wanted search",
-  });
-}
-
 export async function gmailWantedCandidateUrls({ env = process.env, clientFactory = createGmailClient } = {}) {
   const config = gmailConfig(env);
   if (!config.configured) return { urls: [], error: null };
@@ -102,16 +96,12 @@ export async function gmailWantedCandidateUrls({ env = process.env, clientFactor
   }
 }
 
-export async function collectWantedWebSearch({ queries = [], maxResults = 40, env = process.env, now = new Date(), codexRunner = runCodexOnce, gmailCandidates = gmailWantedCandidateUrls } = {}) {
+export async function collectWantedWebSearch({ queries = [], maxResults = 40, env = process.env, now = new Date(), codexRunner = null, gmailCandidates = gmailWantedCandidateUrls } = {}) {
   const gmail = await gmailCandidates({ env });
   const prompt = buildWantedSearchPrompt({ queries, candidateUrls: gmail.urls, maxResults, now });
-  let payload;
-  try {
-    payload = await codexRunner({ prompt, env, apiKey: null, timeoutMs: 10 * 60_000 });
-  } catch (error) {
-    const fallbackKey = apiFallbackKey(env);
-    if (!fallbackKey || !shouldFallbackToApi(error)) throw error;
-    payload = await codexRunner({ prompt, env, apiKey: fallbackKey, timeoutMs: 10 * 60_000 });
-  }
+  const payload = await runCodexStructuredWithFallback({
+    prompt, schema: wantedSearchSchema, env, timeoutMs: 10 * 60_000, search: true,
+    taskName: "Wanted live search", ...(codexRunner ? { codexRunner } : {}),
+  });
   return normalizeWantedSearchResult(payload).slice(0, Math.max(1, maxResults));
 }

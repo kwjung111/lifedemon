@@ -13,6 +13,7 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - 공개 채용 공고 수집, 검증된 기업 필터링, Telegram 브리핑
 - 한국어 자연어 리마인더와 전용 Google Calendar 양방향 동기화
 - systemd 기반 상시 실행과 평일 스케줄링
+- SQLite 상태 일일 백업과 30일 보관
 
 향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
 
@@ -23,6 +24,7 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - Telegram bot token
 - 자연어 리마인더 및 Wanted 검색용 서버 Codex CLI 로그인
 - 선택 사항: Codex 사용량·인증 오류 시 사용할 API fallback key
+- SQLite CLI (`sqlite3`, 운영 백업용)
 
 ## Setup
 
@@ -32,7 +34,9 @@ npx playwright install --with-deps chromium
 cp .env.example .env
 ```
 
-`.env`에 본인의 Telegram bot token과 허용할 개인 chat ID를 입력합니다. `.env`, SQLite DB, 인증 키는 Git에 포함하지 마세요.
+`.env`에 본인의 Telegram bot token, 허용할 개인 chat ID와 동일 사용자의
+`TELEGRAM_USER_ID`를 입력합니다. 봇은 이 사용자의 private chat만 처리합니다.
+`.env`, SQLite DB, 인증 키는 Git에 포함하지 마세요.
 
 ## Run
 
@@ -103,6 +107,12 @@ reminders also use stable delivery keys to avoid duplicate sends. Digest item
 context is retained with the outbox row, so numbered replies still work when a
 message was delivered later by the recovery worker.
 
+Incoming Telegram updates are also journaled before handling. The polling offset
+advances only after successful processing (or an explicit three-attempt
+dead-letter decision), so a restart during AI interpretation does not silently
+discard a reply. Replayed feedback updates use stable source keys and do not add
+duplicate preference events.
+
 The client prefers IPv4 and disables Node network-family autoselection both in
 code and in systemd. Non-retryable Telegram request errors remain visible as
 failed outbox records for `/ask` diagnostics rather than looping forever.
@@ -169,7 +179,7 @@ If a public result contains no stable personal identifier, the bot deliberately
 does not guess whether the user was selected. The official-announcement check is
 automatic, while that private outcome requires one Telegram tap.
 
-상시 Telegram gateway, durable outbox worker, reminder worker와 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 서버가 예약 시각에 꺼져 있어도 부팅 후 누락 실행을 보충합니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다.
+상시 Telegram gateway, durable outbox worker, reminder worker와 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 토·일요일에 누락된 실행을 보충하지 않습니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다. `monitor-backup.timer`는 매일 03:30 KST에 세 SQLite DB를 일관된 스냅샷으로 백업하고 기본 30일간 보관합니다.
 
 주거·채용 일일 리포트에는 소스별 원본 수집 건수, 신규·변경·종료·오류 건수와 마지막 정상 수집 시각이 포함됩니다.
 
@@ -181,7 +191,7 @@ The job pipeline has two separate stages. `jobs:collect` accesses only public li
 
 JobKorea discovery uses its public search and public detail pages without login credentials. Wanted blocks direct server-side Playwright search even with a renewable user session, so the production collector runs non-interactive `codex --search exec` instead. It searches only official `wanted.co.kr/wd/<id>` pages for DevOps, DevSecOps, SRE, platform, cloud, and infrastructure roles, requires an active-posting signal, canonicalizes the Wanted ID, and then feeds verified results into the same deduplication and filtering pipeline. The Codex child process receives a minimal environment, a read-only sandbox, no repository workspace, and a strict JSON output schema.
 
-The first search attempt uses the server's ChatGPT-linked Codex login. When its error specifically indicates quota or authentication exhaustion, `CODEX_API_FALLBACK_KEY` (or the existing `OPENAI_API_KEY`) may be used for one API-backed retry. Gmail remains a supplementary discovery channel: URLs found under the read-only `BOT/Wanted` label are passed to the same live verification prompt, but missing or delayed email never blocks web discovery.
+The first search attempt uses the server's ChatGPT-linked Codex login. When its error specifically indicates quota or authentication exhaustion, an API-backed retry is allowed only when `CODEX_API_FALLBACK_ENABLED=true` and `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) is configured. `CODEX_API_DAILY_CALL_LIMIT` caps fallback calls across processes, and the first switch each day queues a Telegram cost notice. Gmail remains a supplementary discovery channel: URLs found under the read-only `BOT/Wanted` label are passed to the same live verification prompt, but missing or delayed email never blocks web discovery.
 
 The production `jobs-daily.timer` runs one weekday digest at 09:20 KST. Install it with the other systemd units only after the private profile, company-verification import, Codex login, and optional Gmail credentials have been placed outside Git.
 
@@ -206,7 +216,7 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 
 ## Security
 
-- 봇은 설정된 `TELEGRAM_CHAT_ID` 한 명의 메시지만 처리합니다.
+- 봇은 설정된 `TELEGRAM_CHAT_ID`의 private chat에서 정확히 일치하는 `TELEGRAM_USER_ID`의 메시지만 처리합니다.
 - Telegram token, API key, SSH key, `auth.json`, 운영 DB를 커밋하지 마세요.
 - 사용자 입력은 지원하는 구조화 규칙으로만 저장하며 서버 명령으로 실행하지 않습니다.
 

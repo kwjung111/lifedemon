@@ -9,8 +9,9 @@ import {
 import {
   disableHousingRule,
   restoreHousingApplicationStatus,
+  restoreHousingRecommendationHidden,
 } from "../../db.mjs";
-import { restoreJobApplicationStatus } from "../jobs/db.mjs";
+import { restoreJobApplicationStatus, restoreJobRecommendationHidden } from "../jobs/db.mjs";
 
 export const undoFeedbackPattern = /(?:방금(?:\s*(?:거|것|피드백|한\s*말))?\s*(?:취소|되돌려)|피드백\s*(?:취소|되돌려)|관심\s*없(?:음|는\s*거)?\s*취소|제외(?:한\s*거)?\s*취소)/;
 
@@ -37,6 +38,11 @@ export function undoLatestFeedback({ domain = null, entityId = null, text = null
     const previous = metadata.previousApplicationStatus || null;
     if (event.domain === "jobs") restoreJobApplicationStatus(event.entity_id, previous);
     if (event.domain === "housing") restoreHousingApplicationStatus(event.entity_id, previous);
+  }
+  if (["ignored", "negative", "positive"].includes(event.signal)) {
+    const previousHidden = Boolean(metadata.previousRecommendationHidden);
+    if (event.domain === "jobs") restoreJobRecommendationHidden(event.entity_id, previousHidden);
+    if (event.domain === "housing") restoreHousingRecommendationHidden(event.entity_id, previousHidden);
   }
   if (event.signal === "applied") {
     if (event.domain === "housing") cancelRemindersForEntity("housing", `${event.entity_id}:`);

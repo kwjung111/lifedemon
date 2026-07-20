@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.11.0 - 2026-07-20
+
+### Added
+
+- Added a durable Telegram update inbox with retry/dead-letter handling, private chat-and-user authorization, and replay-safe feedback event keys.
+- Added daily atomic SQLite backups with 30-day rotation and a dedicated systemd timer.
+- Added an explicit, daily-budgeted Codex API fallback with a once-per-day Telegram cost notice.
+
+### Changed
+
+- All structured Codex jobs now run in an ephemeral read-only workspace with a sanitized environment, stdin prompts, strict schemas, and forced timeout cleanup.
+- Application tracking and recommendation visibility are independent: negative feedback can hide a recommendation without erasing an existing application.
+- Current preferences use the latest canonical opinion per concept; semantic preference influence is bounded beneath hard eligibility and official assessment scores.
+- Housing and job weekday timers no longer catch up during weekends, and batch jobs share one lock to avoid overlapping AI work.
+
+### Fixed
+
+- Rejected unsafe or off-domain Playwright navigation, protected stored browser sessions with owner-only permissions, and retained prior source state when a crawl validates zero rows.
+- Preserved valid feedback metadata, all active preference events, mixed feedback aspects, and clarification reply context.
+- Prevented future-intent phrases from being recorded as completed applications and prevented duplicate durable-rule proposals.
+- Scheduled work is marked complete only after Telegram confirms delivery; truncated job digests no longer claim that repeating `/jobs` reveals a missing next page.
+
 ## 1.10.0 - 2026-07-20
 
 ### Added

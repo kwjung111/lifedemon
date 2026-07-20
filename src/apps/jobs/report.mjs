@@ -2,7 +2,7 @@ import { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } fr
 import { appliedJobs, getJobSetting, jobAssessmentSummary, saveJobDigestItems } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 import { sendMessage } from "../../telegram.mjs";
-import { listFeedbackRules, recentFeedbackEvents } from "../../core/state.mjs";
+import { activePreferenceFeedbackEvents, listFeedbackRules } from "../../core/state.mjs";
 import { semanticPreferences } from "../feedback/preferences.mjs";
 
 const sourceLabel = { remember: "리멤버", wanted: "원티드", jobkorea: "잡코리아" };
@@ -22,7 +22,7 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
   const profile = loadJobProfile();
   const verifications = loadAuthorizedCompanyVerifications();
   const excludedCompanies = listFeedbackRules("jobs", "exclude_company").map((rule) => rule.keyword);
-  const feedbackEvents = recentFeedbackEvents(100);
+  const feedbackEvents = activePreferenceFeedbackEvents("jobs");
   const preferredCompanies = feedbackEvents
     .filter((event) => event.domain === "jobs" && event.signal === "positive" && event.subject_type === "company")
     .map((event) => event.subject_value);
@@ -67,7 +67,7 @@ function buildJobReportPages(collection = [], { limit = 100, filtering = [], ver
     page.items.push(item);
   }
   const remaining = entries.length - page.items.length;
-  if (remaining > 0) page.text = `${page.text}\n\n외 ${remaining}건은 /jobs에서 다음 조회 시 확인할 수 있습니다.`;
+  if (remaining > 0) page.text = `${page.text}\n\n외 ${remaining}건은 알림 과다 방지를 위해 생략했습니다.`;
   return [page];
 }
 

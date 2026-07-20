@@ -1,4 +1,4 @@
-import { apiFallbackKey, runCodexStructuredOnce, shouldFallbackToApi } from "../../core/codex-structured.mjs";
+import { runCodexStructuredOnce, runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 
 export const reminderRequestSchema = {
   type: "object",
@@ -33,13 +33,7 @@ export async function runReminderModel(prompt, {
     search: false,
     taskName: "reminder parse",
   };
-  try {
-    return await codexRunner({ ...options, apiKey: null });
-  } catch (error) {
-    const fallbackKey = apiFallbackKey(env);
-    if (!fallbackKey || !shouldFallbackToApi(error)) throw error;
-    return codexRunner({ ...options, apiKey: fallbackKey });
-  }
+  return runCodexStructuredWithFallback({ ...options, codexRunner });
 }
 
 export function looksLikeReminderRequest(text) {

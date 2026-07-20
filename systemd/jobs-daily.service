@@ -9,7 +9,11 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/data/crawler
 EnvironmentFile=/home/ubuntu/.config/monitor-platform/telegram.env
-ExecStart=/usr/bin/xvfb-run -a /usr/local/bin/node --no-network-family-autoselection /data/crawler/src/jobs-daily.mjs
+EnvironmentFile=-/home/ubuntu/.config/monitor-platform/openai-api.env
+Environment=CODEX_API_FALLBACK_ENABLED=true
+Environment=CODEX_API_DAILY_CALL_LIMIT=10
+ExecStart=/usr/bin/flock --wait 7200 /data/crawler/data/batch.lock /usr/bin/xvfb-run -a /usr/local/bin/node --no-network-family-autoselection /data/crawler/src/jobs-daily.mjs
 TimeoutStartSec=2h
 NoNewPrivileges=true
 PrivateTmp=true
+UMask=0077

@@ -27,7 +27,8 @@ jobDb.exec(`
   );
   CREATE TABLE IF NOT EXISTS job_applications (
     posting_id TEXT PRIMARY KEY REFERENCES job_postings(id) ON DELETE CASCADE,
-    status TEXT NOT NULL, applied_at TEXT, note TEXT, updated_at TEXT NOT NULL
+    status TEXT NOT NULL, applied_at TEXT, note TEXT, updated_at TEXT NOT NULL,
+    recommendation_hidden INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS job_digest_items (
     message_id INTEGER NOT NULL, item_index INTEGER NOT NULL,
@@ -39,6 +40,11 @@ jobDb.exec(`
 `);
 const assessmentColumns = new Set(jobDb.prepare("PRAGMA table_info(job_assessments)").all().map((column) => column.name));
 if (!assessmentColumns.has("verification_fingerprint")) jobDb.exec("ALTER TABLE job_assessments ADD COLUMN verification_fingerprint TEXT");
+const applicationColumns = new Set(jobDb.prepare("PRAGMA table_info(job_applications)").all().map((column) => column.name));
+if (!applicationColumns.has("recommendation_hidden")) {
+  jobDb.exec("ALTER TABLE job_applications ADD COLUMN recommendation_hidden INTEGER NOT NULL DEFAULT 0");
+  jobDb.exec("UPDATE job_applications SET recommendation_hidden=1 WHERE status='ignored'");
+}
 
 const now = () => new Date().toISOString();
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -159,7 +165,8 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
   const excludedCompanyKeys = new Set(excludedCompanies.map(canonicalCompany).filter(Boolean));
   const preferredCompanyKeys = new Set(preferredCompanies.map(canonicalCompany).filter(Boolean));
   const rows = jobDb.prepare(`
-    SELECT p.*, a.decision, a.result_json, a.assessed_at, ja.status AS application_status
+    SELECT p.*, a.decision, a.result_json, a.assessed_at, ja.status AS application_status,
+           COALESCE(ja.recommendation_hidden, 0) AS recommendation_hidden
       FROM job_assessments a JOIN job_postings p ON p.id=a.posting_id
       LEFT JOIN job_applications ja ON ja.posting_id=p.id
      WHERE p.active=1 AND a.profile_fingerprint=? AND a.verification_fingerprint=?
@@ -168,7 +175,7 @@ export function jobAssessmentSummary(profileFingerprint, verificationFingerprint
   for (const row of rows) {
     const key = canonicalJobKey(row);
     const group = groups.get(key) || { hidden: false, row: null };
-    group.hidden ||= ["applied", "ignored"].includes(row.application_status);
+    group.hidden ||= row.application_status === "applied" || Boolean(row.recommendation_hidden);
     group.hidden ||= excludedCompanyKeys.has(canonicalCompany(row.company));
     group.row = group.row ? preferredDuplicate(group.row, row) : row;
     groups.set(key, group);
@@ -213,7 +220,31 @@ export function setJobApplication(postingId, status = "applied", fields = {}) {
 }
 
 export function jobApplicationStatus(postingId) {
-  return jobDb.prepare("SELECT status FROM job_applications WHERE posting_id=?").get(postingId)?.status || null;
+  const status = jobDb.prepare("SELECT status FROM job_applications WHERE posting_id=?").get(postingId)?.status;
+  return !status || status === "none" ? null : status;
+}
+
+export function jobRecommendationHidden(postingId) {
+  return Boolean(jobDb.prepare("SELECT recommendation_hidden FROM job_applications WHERE posting_id=?").get(postingId)?.recommendation_hidden);
+}
+
+export function setJobRecommendationHidden(postingId, hidden = true) {
+  const timestamp = now();
+  const existing = jobDb.prepare("SELECT status FROM job_applications WHERE posting_id=?").get(postingId);
+  if (existing) {
+    jobDb.prepare("UPDATE job_applications SET recommendation_hidden=?, updated_at=? WHERE posting_id=?")
+      .run(hidden ? 1 : 0, timestamp, postingId);
+  } else {
+    jobDb.prepare(`
+      INSERT INTO job_applications(posting_id, status, applied_at, note, updated_at, recommendation_hidden)
+      VALUES (?, 'none', NULL, NULL, ?, ?)
+    `).run(postingId, timestamp, hidden ? 1 : 0);
+  }
+  return hidden;
+}
+
+export function restoreJobRecommendationHidden(postingId, hidden = false) {
+  return setJobRecommendationHidden(postingId, hidden);
 }
 
 export function restoreJobApplicationStatus(postingId, status = null) {

@@ -86,8 +86,11 @@ export function createFeedbackBotModule({
           let interpretation = null;
           try { interpretation = JSON.parse(event.metadata_json || "{}").interpretation; } catch { /* legacy event */ }
           const learned = interpretation?.preference || event.subject_value || "세부 내용 없음";
+          const aspects = (interpretation?.aspects || []).map((aspect) =>
+            `${aspect.scope} ${aspect.sentiment === "positive" ? "👍" : "👎"} ${aspect.keyword}`
+          ).join(" · ");
           const area = event.domain === "housing" ? "주택" : event.domain === "jobs" ? "채용" : event.domain;
-          return `${index + 1}. [${area}·${labels[event.signal]}] ${learned}`;
+          return `${index + 1}. [${area}·${labels[event.signal]}] ${learned}${aspects ? `\n   ${aspects}` : ""}`;
         });
         await send(lines.length
           ? `최근 반영 중인 피드백\n\n${lines.join("\n")}\n\n잘못 이해한 가장 최근 항목은 ‘방금 거 취소’로 되돌릴 수 있어요.`

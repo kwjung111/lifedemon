@@ -40,7 +40,8 @@ db.exec(`
     applied_at TEXT,
     announcement_date TEXT,
     note TEXT,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    recommendation_hidden INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS application_results (
@@ -142,6 +143,11 @@ function migrateSchema() {
     const queueColumns = new Set(db.prepare("PRAGMA table_info(review_queue)").all().map((column) => column.name));
     if (!queueColumns.has("profile_fingerprint")) db.exec("ALTER TABLE review_queue ADD COLUMN profile_fingerprint TEXT");
     if (!queueColumns.has("claim_token")) db.exec("ALTER TABLE review_queue ADD COLUMN claim_token TEXT");
+    const applicationColumns = new Set(db.prepare("PRAGMA table_info(applications)").all().map((column) => column.name));
+    if (!applicationColumns.has("recommendation_hidden")) {
+      db.exec("ALTER TABLE applications ADD COLUMN recommendation_hidden INTEGER NOT NULL DEFAULT 0");
+      db.exec("UPDATE applications SET recommendation_hidden=1 WHERE status='ignored'");
+    }
 
     const scoreColumn = reviewColumns.find((column) => column.name === "score");
     if (scoreColumn?.notnull) {
@@ -353,9 +359,7 @@ export function upsertNotice(notice) {
 
 export function markSourceCollectionComplete(source, activeIds) {
   const ids = [...new Set(activeIds)];
-  if (!ids.length) {
-    return db.prepare("UPDATE notices SET active=0 WHERE source=?").run(source).changes;
-  }
+  if (!ids.length) return 0; // An empty scrape is not proof that every notice closed.
   const placeholders = ids.map(() => "?").join(", ");
   return db.prepare(`
     UPDATE notices SET active=0
@@ -367,6 +371,7 @@ export function activeNotices() {
   const { fingerprint } = syncHousingProfile();
   return db.prepare(`
     SELECT n.*, a.status AS application_status, a.applied_at,
+           COALESCE(a.recommendation_hidden, 0) AS recommendation_hidden,
            COALESCE(a.announcement_date, n.announcement_date) AS effective_announcement_date,
            a.note AS application_note,
            r.eligibility AS ai_eligibility, r.score AS ai_score,
@@ -539,7 +544,31 @@ export function setApplication(noticeIdValue, status, fields = {}) {
 }
 
 export function housingApplicationStatus(noticeIdValue) {
-  return db.prepare("SELECT status FROM applications WHERE notice_id=?").get(noticeIdValue)?.status || null;
+  const status = db.prepare("SELECT status FROM applications WHERE notice_id=?").get(noticeIdValue)?.status;
+  return !status || status === "none" ? null : status;
+}
+
+export function housingRecommendationHidden(noticeIdValue) {
+  return Boolean(db.prepare("SELECT recommendation_hidden FROM applications WHERE notice_id=?").get(noticeIdValue)?.recommendation_hidden);
+}
+
+export function setHousingRecommendationHidden(noticeIdValue, hidden = true) {
+  const timestamp = now();
+  const existing = db.prepare("SELECT status FROM applications WHERE notice_id=?").get(noticeIdValue);
+  if (existing) {
+    db.prepare("UPDATE applications SET recommendation_hidden=?, updated_at=? WHERE notice_id=?")
+      .run(hidden ? 1 : 0, timestamp, noticeIdValue);
+  } else {
+    db.prepare(`
+      INSERT INTO applications(notice_id, status, applied_at, announcement_date, note, updated_at, recommendation_hidden)
+      VALUES (?, 'none', NULL, NULL, NULL, ?, ?)
+    `).run(noticeIdValue, timestamp, hidden ? 1 : 0);
+  }
+  return hidden;
+}
+
+export function restoreHousingRecommendationHidden(noticeIdValue, hidden = false) {
+  return setHousingRecommendationHidden(noticeIdValue, hidden);
 }
 
 export function restoreHousingApplicationStatus(noticeIdValue, status = null) {

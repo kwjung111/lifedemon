@@ -21,6 +21,7 @@ const {
   listFeedbackRules,
   platformDb,
   recentFeedbackEvents,
+  recordFeedbackEvent,
 } = await import("../src/core/state.mjs");
 const {
   parseEntityFeedback,
@@ -52,7 +53,9 @@ test("parses item feedback without treating silence as a negative signal", () =>
   assert.equal(parseEntityFeedback("위시켓은 좀 미묘한데", { domain: "jobs", company: "위시켓" }).signal, "negative");
   assert.equal(parseEntityFeedback("두 번째가 제일 나아 보이네", { domain: "jobs", company: "좋은회사" }).signal, "positive");
   assert.equal(parseEntityFeedback("이건 지원해볼 만함", { domain: "jobs", company: "좋은회사" }).signal, "positive");
-  assert.equal(parseEntityFeedback("이거 신청할게", { domain: "housing" }).signal, "applied");
+  assert.equal(parseEntityFeedback("이거 신청할게", { domain: "housing" }), null);
+  assert.equal(parseEntityFeedback("이거 신청 완료", { domain: "housing" }).signal, "applied");
+  assert.equal(parseEntityFeedback("회사는 좋은데 직무는 별로", { domain: "jobs", company: "좋은회사" }), null);
   assert.deepEqual(
     parseEntityFeedback("2번 이 회사는 앞으로 빼", { domain: "jobs", company: "제외회사" }).durableRule,
     { domain: "jobs", kind: "exclude_company", keyword: "제외회사", instruction: "제외회사 회사 제외" },
@@ -76,6 +79,34 @@ test("stores feedback centrally and creates only one pending durable proposal", 
   assert.equal(first.proposal.id, second.proposal.id);
   assert.equal(recentFeedbackEvents().length, 2);
   assert.equal(ruleProposalKeyboard(first.proposal).inline_keyboard[0].length, 2);
+});
+
+test("stores large feedback metadata as valid JSON without truncating undo fields", () => {
+  const event = recordFeedbackEvent({
+    domain: "jobs", entityId: "large-metadata", signal: "mixed", rawText: "혼합 피드백",
+    metadata: {
+      previousApplicationStatus: "applied",
+      interpretation: { preference: "가".repeat(4500), aspects: [] },
+    },
+  });
+  const metadata = JSON.parse(event.metadata_json);
+  assert.equal(metadata.previousApplicationStatus, "applied");
+  assert.equal(metadata.interpretation.preference.length, 4500);
+});
+
+test("deduplicates a replayed Telegram feedback event by source key", () => {
+  const first = recordFeedbackEvent({
+    domain: "jobs", entityId: "replayed-job", signal: "positive",
+    rawText: "좋아", sourceKey: "message:123",
+  });
+  const replay = recordFeedbackEvent({
+    domain: "jobs", entityId: "replayed-job", signal: "positive",
+    rawText: "좋아", sourceKey: "message:123",
+  });
+  assert.equal(replay.id, first.id);
+  assert.equal(platformDb.prepare(`
+    SELECT COUNT(*) AS count FROM feedback_events WHERE source_key='message:123'
+  `).get().count, 1);
 });
 
 test("requires one approval before a durable rule becomes active", async () => {

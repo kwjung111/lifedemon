@@ -82,3 +82,14 @@ test("ranks evidenced second- and third-priority supply ahead when feedback enab
   ];
   assert.equal(rankHousingCandidates(candidates)[0].id, "feedback-fit");
 });
+
+test("a weak semantic preference cannot overwhelm a large official score gap", () => {
+  const candidates = [
+    { id: "strong", ai_score: 95, title: "일반 공공임대", ai_result_json: "{}" },
+    { id: "weak-liked", ai_score: 10, title: "청년안심주택", ai_result_json: "{}" },
+  ];
+  const preferences = [{
+    entityId: "old", scope: "housing_type", sentiment: "positive", keyword: "청년안심주택", strength: "low",
+  }];
+  assert.equal(rankHousingCandidates(candidates, { preference: "", outcomes: [] }, preferences)[0].id, "strong");
+});

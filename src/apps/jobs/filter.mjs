@@ -1,9 +1,19 @@
-import { spawn } from "node:child_process";
+import { runCodexStructuredWithFallback } from "../../core/codex-structured.mjs";
 import { companyGate, companyVerificationFingerprint, loadAuthorizedCompanyVerifications } from "./company-verification.mjs";
 import { failJobFilter, markJobFiltering, pendingJobFilters, saveJobAssessment, syncJobFilterInputs } from "./db.mjs";
 import { jobProfileFingerprint, loadJobProfile } from "./profile.mjs";
 
-const codexAuto = "/home/ubuntu/.local/bin/codex-auto";
+export const jobAssessmentSchema = {
+  type: "object", additionalProperties: false,
+  properties: {
+    decision: { type: "string", enum: ["pass", "exclude", "uncertain"] },
+    summary: { type: "string" },
+    reasons: { type: "array", items: { type: "string" }, maxItems: 8 },
+    concerns: { type: "array", items: { type: "string" }, maxItems: 8 },
+    evidence: { type: "array", items: { type: "string" }, maxItems: 8 },
+  },
+  required: ["decision", "summary", "reasons", "concerns", "evidence"],
+};
 
 export function normalizeJobAssessment(value) {
   if (!value || !["pass", "exclude", "uncertain"].includes(value.decision)) throw new Error("AI job assessment needs decision=pass|exclude|uncertain");
@@ -17,19 +27,9 @@ export function normalizeJobAssessment(value) {
 }
 
 function runCodex(prompt) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("/usr/bin/timeout", ["180s", codexAuto, "--ephemeral", prompt], { cwd: "/data/crawler", stdio: ["ignore", "pipe", "pipe"], env: process.env });
-    let stdout = ""; let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-4000); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`job AI filter failed (${code}): ${stderr}`));
-      const text = stdout.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-      const start = text.indexOf("{"); const end = text.lastIndexOf("}");
-      if (start < 0 || end <= start) return reject(new Error("job AI filter did not return JSON"));
-      try { resolve(JSON.parse(text.slice(start, end + 1))); } catch (error) { reject(error); }
-    });
+  return runCodexStructuredWithFallback({
+    prompt, schema: jobAssessmentSchema, env: process.env, timeoutMs: 180_000,
+    search: false, taskName: "job assessment",
   });
 }
 

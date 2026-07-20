@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inferCompany, inferJobMetadata, inferJobTitle, linksForSource, mapWithConcurrency, normalizePublicJob, publicJobSources } from "../src/apps/jobs/collectors.mjs";
+import { checkedJobUrl, inferCompany, inferJobMetadata, inferJobTitle, linksForSource, mapWithConcurrency, normalizePublicJob, publicJobSources } from "../src/apps/jobs/collectors.mjs";
 
 test("limits detail work while preserving each result position", async () => {
   let active = 0;
@@ -41,6 +41,16 @@ test("canonicalizes JobKorea detail URLs and keeps the posting id", () => {
   });
   assert.equal(job.url, "https://www.jobkorea.co.kr/Recruit/GI_Read/49220858");
   assert.equal(job.externalId, "49220858");
+});
+
+test("rejects lookalike, insecure, and link-local job URLs", () => {
+  const jobkorea = publicJobSources.find((source) => source.name === "jobkorea");
+  assert.throws(() => checkedJobUrl("https://evil.test/Recruit/GI_Read/1", jobkorea), /allowlist/);
+  assert.throws(() => checkedJobUrl("http://www.jobkorea.co.kr/Recruit/GI_Read/1", jobkorea), /allowlist/);
+  assert.throws(() => checkedJobUrl("https://169.254.169.254/Recruit/GI_Read/1", jobkorea), /allowlist/);
+  assert.equal(linksForSource(jobkorea, [
+    { href: "https://evil.test/Recruit/GI_Read/1", text: "DevOps" },
+  ]).length, 0);
 });
 
 test("canonicalizes Remember detail URLs across discovery queries", () => {

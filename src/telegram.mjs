@@ -28,6 +28,14 @@ export class TelegramApiError extends Error {
   }
 }
 
+export class TelegramDeliveryPendingError extends Error {
+  constructor(message, outboxId) {
+    super(message);
+    this.name = "TelegramDeliveryPendingError";
+    this.outboxId = outboxId;
+  }
+}
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const parsedResult = (row) => {
   try { return JSON.parse(row?.result_json || "null"); } catch { return null; }
@@ -49,6 +57,7 @@ export function createTelegramClient({
   sleep = wait,
   maxAttempts = 4,
   retryBaseMs = 2_000,
+  deliveryWaitMs = 50_000,
 } = {}) {
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN is required");
   if (!allowedChatId) throw new Error("TELEGRAM_CHAT_ID is required");
@@ -108,9 +117,18 @@ export function createTelegramClient({
     if (row.status === "failed") throw new TelegramApiError(row.last_error || "Telegram message permanently failed", { retryable: false });
     const claimed = claimTelegramOutbox({ id: row.id });
     if (!claimed) {
-      const current = getTelegramOutbox(row.id);
-      if (current?.status === "delivered") return parsedResult(current);
-      return { queued: true, outbox_id: row.id };
+      const deadline = Date.now() + deliveryWaitMs;
+      while (Date.now() < deadline) {
+        const current = getTelegramOutbox(row.id);
+        if (current?.status === "delivered") return parsedResult(current);
+        if (current?.status === "failed") {
+          throw new TelegramApiError(current.last_error || "Telegram message permanently failed", { retryable: false });
+        }
+        const retryClaim = claimTelegramOutbox({ id: row.id });
+        if (retryClaim) return deliverClaimed(retryClaim);
+        await sleep(250);
+      }
+      throw new TelegramDeliveryPendingError(`Telegram delivery is still pending for outbox ${row.id}`, row.id);
     }
     return deliverClaimed(claimed);
   }

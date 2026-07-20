@@ -142,7 +142,7 @@ test("retries the autonomous agent with the configured API fallback only for quo
   const answer = await runReadOnlyDiagnosticAgent({
     question: "현재 구성 설명",
     snapshot: fixtureSnapshot(),
-    env: { CODEX_API_FALLBACK_KEY: "test-api-key" },
+    env: { CODEX_API_FALLBACK_KEY: "test-api-key", CODEX_API_FALLBACK_ENABLED: "true" },
     runner: async ({ apiKey }) => {
       keys.push(apiKey);
       if (!apiKey) throw new Error("usage limit reached");
