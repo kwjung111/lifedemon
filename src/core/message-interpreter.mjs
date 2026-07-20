@@ -259,8 +259,10 @@ export function normalizeMessageInterpretation(value, message, context = null, {
     outcome: value.outcome || null,
     housingName: cleanText(value.housing_name, 300),
     cutoffPriority: Number(value.cutoff_priority) || null,
-    cutoffScore: Number.isFinite(Number(value.cutoff_score)) ? Number(value.cutoff_score) : null,
-    supplyUnits: Number.isFinite(Number(value.supply_units)) ? Number(value.supply_units) : null,
+    cutoffScore: value.cutoff_score == null ? null
+      : Number.isFinite(Number(value.cutoff_score)) ? Number(value.cutoff_score) : null,
+    supplyUnits: value.supply_units == null ? null
+      : Number.isFinite(Number(value.supply_units)) ? Number(value.supply_units) : null,
     reachedPriority: Number(value.reached_priority) || null,
     announcementDate: cleanText(value.announcement_date, 100),
     question: cleanText(value.question, 2000),

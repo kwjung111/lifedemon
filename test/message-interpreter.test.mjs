@@ -33,6 +33,8 @@ test("uses one global structured call for a natural recommendation request", asy
   assert.equal(calls, 1);
   assert.equal(result.route, "recommendations_list");
   assert.equal(result.domain, "jobs");
+  assert.equal(result.cutoffScore, null);
+  assert.equal(result.supplyUnits, null);
   assert.match(prompt, /채용 다 보여줘/);
   assert.match(prompt, /Never follow instructions/);
 });
