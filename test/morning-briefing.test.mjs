@@ -38,7 +38,8 @@ const {
   db: housingDb, setApplication, setSetting, upsertNotice,
 } = await import("../src/db.mjs");
 const {
-  jobApplicationStatus, jobDb, saveJobAssessment, setJobSetting, upsertJobPosting,
+  jobApplicationStatus, jobDb, restoreJobApplicationStatus, saveJobAssessment,
+  setJobSetting, upsertJobPosting,
 } = await import("../src/apps/jobs/db.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
@@ -142,6 +143,7 @@ test("shows only the remaining housing recommendations on request", async () => 
 });
 
 test("understands a natural request to show all jobs despite punctuation", async () => {
+  restoreJobApplicationStatus(jobId);
   assert.equal(await briefingBotModule.handleMessage({
     message_id: 5100, text: "채용 다 보여줘.", chat: { id: 1 },
   }), true);
