@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { createConnection } from "node:net";
+import { readdir, readFile } from "node:fs/promises";
+import { extname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { db } from "../../db.mjs";
 import { jobDb } from "../jobs/db.mjs";
@@ -44,6 +46,7 @@ const networkHosts = [
   "www.googleapis.com",
   "api.openai.com",
 ];
+const searchableExtensions = new Set([".mjs", ".service", ".timer", ".json"]);
 
 async function defaultCommand(file, args, options = {}) {
   try {
@@ -156,6 +159,36 @@ async function networkStatus({ dnsLookup = lookup, connect = tcpCheck } = {}) {
   }));
 }
 
+export async function searchRepositorySource(query, root = repoPath) {
+  const terms = String(query || "").toLowerCase().split(/\s+/).filter((term) => term.length >= 2);
+  if (!terms.length) throw new Error("code search query has no usable terms");
+  const files = [join(root, "package.json")];
+  const pending = [join(root, "src"), join(root, "systemd")];
+  while (pending.length && files.length < 500) {
+    const directory = pending.pop();
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile() && searchableExtensions.has(extname(entry.name))) files.push(path);
+    }
+  }
+  const matches = [];
+  for (const file of files) {
+    const text = await readFile(file, "utf8");
+    const lines = text.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const candidate = lines[index].toLowerCase();
+      if (!terms.every((term) => candidate.includes(term))) continue;
+      const start = Math.max(0, index - 2);
+      const end = Math.min(lines.length, index + 3);
+      matches.push(`${relative(root, file)}:${index + 1}\n${lines.slice(start, end).map((line, offset) => `${start + offset + 1}: ${line}`).join("\n")}`);
+      if (matches.length >= 80) return matches.join("\n\n");
+    }
+  }
+  return matches.length ? matches.join("\n\n") : "No source matches found.";
+}
+
 function normalizeCall(call) {
   const tool = diagnosticToolNames.includes(call?.tool) ? call.tool : null;
   if (!tool) throw new Error("tool is outside the diagnostic allowlist");
@@ -174,6 +207,7 @@ export async function executeReadOnlyTool(call, {
   env = process.env,
   dnsLookup = lookup,
   connect = tcpCheck,
+  search = searchRepositorySource,
 } = {}) {
   const normalized = normalizeCall(call);
   let output;
@@ -228,7 +262,7 @@ export async function executeReadOnlyTool(call, {
     case "deployment_status":
       output = {
         status: await command("/usr/bin/git", ["-C", repoPath, "status", "--short", "--branch"]),
-        revision: await command("/usr/bin/git", ["-C", repoPath, "log", "-5", "--oneline", "--decorate"]),
+        revision: await command("/usr/bin/git", ["-C", repoPath, "log", "-5", "--format=%h %cI %s %d"]),
       };
       break;
     case "environment_health":
@@ -239,11 +273,7 @@ export async function executeReadOnlyTool(call, {
       break;
     case "code_search":
       if (normalized.query.length < 2) throw new Error("code search query is too short");
-      output = await command("rg", [
-        "--line-number", "--context", "2", "--max-count", "80",
-        "--glob", "*.mjs", "--glob", "*.service", "--glob", "*.timer",
-        "--", normalized.query, "src", "systemd", "package.json",
-      ], { cwd: repoPath });
+      output = await search(normalized.query);
       break;
     default:
       throw new Error("unsupported diagnostic tool");

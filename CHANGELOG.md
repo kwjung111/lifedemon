@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1 - 2026-07-20
+
+### Fixed
+
+- The read-only source-search diagnostic now uses a bounded built-in repository walker instead of depending on `rg` being installed on the production host.
+- Deployment diagnostics now include commit timestamps so the agent can correlate a scheduled run with the version that was actually available at that time.
+
 ## 1.5.0 - 2026-07-20
 
 ### Changed

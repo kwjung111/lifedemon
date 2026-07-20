@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -34,7 +34,7 @@ const {
 } = await import("../src/apps/manager/query.mjs");
 const { createManagerBotModule } = await import("../src/apps/manager/bot-module.mjs");
 const { diagnosticDecisionSchema, runReadOnlyDiagnosticAgent } = await import("../src/apps/manager/agent.mjs");
-const { executeReadOnlyTool } = await import("../src/apps/manager/read-only-tools.mjs");
+const { executeReadOnlyTool, searchRepositorySource } = await import("../src/apps/manager/read-only-tools.mjs");
 const { buildSystemSnapshot, parseSystemctlShow } = await import("../src/apps/manager/snapshot.mjs");
 const { db } = await import("../src/db.mjs");
 const { jobDb, setJobSetting } = await import("../src/apps/jobs/db.mjs");
@@ -195,6 +195,30 @@ test("enforces the command and unit allowlists and redacts diagnostic output", a
   assert.equal(commandArgs.args[commandArgs.args.indexOf("--since") + 1], "5 minutes ago");
   assert.doesNotMatch(result.output, /secret-value|abc\.def/);
   assert.match(result.output, /REDACTED/);
+
+  let searched;
+  const searchResult = await executeReadOnlyTool({
+    tool: "code_search", unit: null, lines: null, since_minutes: null, domain: null, query: "job_collection_last_success_at",
+  }, {
+    search: async (query) => {
+      searched = query;
+      return "src/apps/jobs/collect.mjs:21";
+    },
+  });
+  assert.equal(searched, "job_collection_last_success_at");
+  assert.match(searchResult.output, /collect\.mjs:21/);
+});
+
+test("searches only the bounded source tree without an external binary", async () => {
+  const root = join(dataDir, "search-fixture");
+  mkdirSync(join(root, "src", "apps"), { recursive: true });
+  mkdirSync(join(root, "systemd"), { recursive: true });
+  writeFileSync(join(root, "package.json"), "{}");
+  writeFileSync(join(root, "src", "apps", "collect.mjs"), "const key = 'job_collection_last_success_at';\n");
+  writeFileSync(join(root, "systemd", "jobs-daily.service"), "Description=fixture\n");
+  const result = await searchRepositorySource("job_collection_last_success_at", root);
+  assert.match(result, /src[\\/]apps[\\/]collect\.mjs:1/);
+  assert.doesNotMatch(result, /job-profile/);
 });
 
 test("builds a private snapshot and parses systemd properties without executing a shell", () => {
