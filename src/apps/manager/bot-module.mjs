@@ -1,12 +1,18 @@
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { buildSystemSnapshot } from "./snapshot.mjs";
 import { answerManagerQuestion, looksLikeManagerQuestion } from "./query.mjs";
+import { askManagerConversation } from "./conversation.mjs";
 
 function stripCommand(text) {
   return String(text || "").replace(/^\/(?:daemon|system|ask)(?:@\w+)?\s*/i, "").trim();
 }
 
-export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer = answerManagerQuestion, send = sendMessage } = {}) {
+export function createManagerBotModule({
+  snapshot = buildSystemSnapshot,
+  answer = answerManagerQuestion,
+  converse = answer,
+  send = sendMessage,
+} = {}) {
   let lastExchange = null;
   return {
     id: "manager",
@@ -20,6 +26,7 @@ export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer 
       const text = String(message.text || "").trim();
       if (!looksLikeManagerQuestion(text)) return false;
       const rawQuestion = stripCommand(text) || "전체 시스템 상태와 최근 수집 시각을 알려줘";
+      const isAsk = /^\/ask(?:@\w+)?(?:\s|$)/i.test(text);
       const replyContext = message.reply_to_message?.from?.is_bot
         ? String(message.reply_to_message.text || "").trim().slice(0, 2500)
         : "";
@@ -39,7 +46,17 @@ export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer 
       heartbeat?.unref?.();
       let result;
       try {
-        result = await answer(question, snapshot());
+        const currentSnapshot = snapshot();
+        if (isAsk) {
+          try {
+            result = await converse(rawQuestion, currentSnapshot);
+          } catch (error) {
+            console.error("Manager conversation failed; using diagnostic fallback", error.message);
+            result = await answer(question, currentSnapshot);
+          }
+        } else {
+          result = await answer(question, currentSnapshot);
+        }
       } finally {
         if (heartbeat) clearInterval(heartbeat);
       }
@@ -50,4 +67,4 @@ export function createManagerBotModule({ snapshot = buildSystemSnapshot, answer 
   };
 }
 
-export const managerBotModule = createManagerBotModule();
+export const managerBotModule = createManagerBotModule({ converse: askManagerConversation });

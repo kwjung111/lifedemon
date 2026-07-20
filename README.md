@@ -49,9 +49,14 @@ npm run jobs:daily
 ## Life Daemon operations assistant
 
 The existing Telegram gateway includes a read-only operations assistant. Use
-`/daemon` for a concise overall health report, or `/ask <question>` for natural
-Korean questions. Common questions may also be sent without a command, such as
-`채용공고 우선순위가 어떻게 돼?` or `수집이 마지막으로 언제 돌았지?`.
+`/daemon` for a concise overall health report, or `/ask <question>` for a
+persistent conversational Codex thread. The thread ID is stored in the shared
+platform database, so follow-up context survives Telegram messages and bot
+restarts. Each turn also receives the Codex app-server's authoritative account
+rate-limit snapshot; questions such as `/ask 지금 코덱스 얼마나 남았어?` work
+without a separate usage command. Common operations questions may also be sent
+without a command, such as `채용공고 우선순위가 어떻게 돼?` or
+`수집이 마지막으로 언제 돌았지?`.
 
 Common health and priority questions are formatted directly from a bounded
 snapshot. More complex or causal questions start an autonomous read-only
@@ -63,7 +68,14 @@ Source investigations rank multi-term matches across nearby context and can
 inspect bounded Git history for the exact revision that introduced a setting or
 behavior, allowing an earlier scheduled run to be correlated with deployed code.
 
-Every investigation uses strict structured actions, at most three adaptive
+The conversational thread uses read-only sandboxing at both thread and turn
+boundaries, disables command-network access, receives a minimal sanitized
+environment, and uses an approval policy that cannot authorize writes. It is
+explicitly prohibited from inspecting credentials or secret files. If the
+app-server is unavailable, `/ask` falls back to the existing bounded diagnostic
+agent and API fallback policy.
+
+Every fallback investigation uses strict structured actions, at most three adaptive
 rounds and eight tool calls. Tool implementations use fixed command argument
 lists: the model cannot supply a shell command, SQL statement, arbitrary unit,
 path, or host. Outputs are secret-redacted and bounded before the model sees

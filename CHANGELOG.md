@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 - 2026-07-20
+
+### Added
+
+- `/ask` now resumes one persisted Codex app-server thread, so follow-up questions retain their conversation across Telegram messages and bot restarts.
+- Every `/ask` turn receives an authoritative `account/rateLimits/read` snapshot, allowing natural questions about remaining Codex usage without a separate model tool or Telegram command.
+
+### Changed
+
+- `/ask` runs as a conversational Codex session with a per-thread and per-turn read-only sandbox, disabled command-network access, a sanitized process environment, and an approval policy that cannot authorize writes.
+- `/daemon` and natural operations questions keep the deterministic and bounded diagnostic paths. If app-server is unavailable, `/ask` falls back to the existing allowlisted diagnostic agent and API fallback policy.
+
 ## 1.5.2 - 2026-07-20
 
 ### Fixed

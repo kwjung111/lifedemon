@@ -34,6 +34,7 @@ const {
 } = await import("../src/apps/manager/query.mjs");
 const { createManagerBotModule } = await import("../src/apps/manager/bot-module.mjs");
 const { diagnosticDecisionSchema, runReadOnlyDiagnosticAgent } = await import("../src/apps/manager/agent.mjs");
+const { askManagerConversation, buildConversationInput, compactRateLimits } = await import("../src/apps/manager/conversation.mjs");
 const { executeReadOnlyTool, searchRepositorySource } = await import("../src/apps/manager/read-only-tools.mjs");
 const { buildSystemSnapshot, parseSystemctlShow } = await import("../src/apps/manager/snapshot.mjs");
 const { db } = await import("../src/db.mjs");
@@ -169,6 +170,89 @@ test("routes a slash-job natural question through the manager module", async () 
   assert.match(questions[1], /이전 대화/);
   assert.match(questions[1], /현재 질문/);
   assert.equal(await module.handleMessage({ text: "오늘 점심 뭐 먹지?" }), false);
+});
+
+test("routes /ask through the persistent conversation while keeping other manager routes unchanged", async () => {
+  const sent = [];
+  const conversations = [];
+  const diagnostics = [];
+  const module = createManagerBotModule({
+    snapshot: () => fixtureSnapshot(),
+    converse: async (question) => {
+      conversations.push(question);
+      return "대화형 응답";
+    },
+    answer: async (question) => {
+      diagnostics.push(question);
+      return "진단 응답";
+    },
+    send: async (message) => sent.push(message),
+  });
+  assert.equal(await module.handleMessage({ text: "/ask 지금 사용량 얼마나 남았어?" }), true);
+  assert.deepEqual(conversations, ["지금 사용량 얼마나 남았어?"]);
+  assert.deepEqual(diagnostics, []);
+  assert.deepEqual(sent, ["대화형 응답"]);
+
+  assert.equal(await module.handleMessage({ text: "/daemon" }), true);
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(sent, ["대화형 응답", "진단 응답"]);
+});
+
+test("falls back to the bounded diagnostic agent when the conversational app-server fails", async () => {
+  const sent = [];
+  const module = createManagerBotModule({
+    snapshot: () => fixtureSnapshot(),
+    converse: async () => { throw new Error("app-server unavailable"); },
+    answer: async () => "안전한 진단 fallback",
+    send: async (message) => sent.push(message),
+  });
+  assert.equal(await module.handleMessage({ text: "/ask 서버 상태 알려줘" }), true);
+  assert.deepEqual(sent, ["안전한 진단 fallback"]);
+});
+
+test("injects authoritative Codex rate limits into a conversational turn", async () => {
+  const compact = compactRateLimits({
+    rateLimits: {
+      planType: "plus",
+      primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+      secondary: { usedPercent: 61, windowDurationMins: 10_080, resetsAt: 1_800_500_000 },
+    },
+  });
+  assert.equal(compact.primary.remainingPercent, 63);
+  assert.equal(compact.secondary.remainingPercent, 39);
+
+  const input = buildConversationInput("얼마나 남았어?", fixtureSnapshot(), { rateLimits: {
+    planType: "plus",
+    primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+  } });
+  assert.match(input, /얼마나 남았어/);
+  assert.match(input, /"remainingPercent":63/);
+  assert.match(input, /trusted_runtime_context/);
+});
+
+test("persists and reuses the Codex conversation thread id", async () => {
+  const calls = [];
+  let saved = null;
+  const client = {
+    async attachThread(threadId) { calls.push(["attach", threadId]); return threadId || "thread-123"; },
+    async rateLimits() { calls.push(["limits"]); return { rateLimits: { primary: { usedPercent: 10 } } }; },
+    async runTurn(threadId, input) { calls.push(["turn", threadId, input]); return "현재 90% 남았습니다."; },
+  };
+  const answer = await askManagerConversation("사용량 알려줘", fixtureSnapshot(), {
+    client,
+    loadThreadId: () => saved,
+    saveThreadId: (threadId) => { saved = threadId; },
+  });
+  assert.equal(answer, "현재 90% 남았습니다.");
+  assert.equal(saved, "thread-123");
+  assert.deepEqual(calls[0], ["attach", null]);
+
+  await askManagerConversation("아까 거 다시", fixtureSnapshot(), {
+    client,
+    loadThreadId: () => saved,
+    saveThreadId: (threadId) => { saved = threadId; },
+  });
+  assert.deepEqual(calls[3], ["attach", "thread-123"]);
 });
 
 test("enforces the command and unit allowlists and redacts diagnostic output", async () => {
