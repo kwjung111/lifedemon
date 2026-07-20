@@ -65,8 +65,10 @@ The briefing includes every actionable event due today, application counts, and
 at most the top three housing and top three job recommendations. A domain whose
 top recommendations did not change is reduced to `변경 없음`. Reply with normal
 language such as `4번 지원했어`; the mixed-domain context routes the number to
-the correct tracker. `주택 더 보여줘` or `채용 더 보여줘` returns only the next
-recommendations in one additional message. `/housing_status` remains the housing
+the correct tracker. Free-form requests such as `채용공고 싹 보여줘` are classified
+by a bounded AI navigation router rather than a phrase regex. It returns only one
+bounded page; replying with another natural continuation retrieves the next page.
+`/housing_status` remains the housing
 application-status view, while `/jobs` retains the detailed job recommendation view.
 
 ## Life Inbox
@@ -229,6 +231,7 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 
 - `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
 - `src/apps/briefing/`: The bounded weekday cross-domain briefing and reply delegation
+- `src/apps/navigation/`: AI intent routing for free-form recommendation navigation
 - `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
 - `src/apps/manager/`: Read-only operational questions and Codex conversation
 - `src/apps/manual/`: One-screen Telegram manual and detailed command guide

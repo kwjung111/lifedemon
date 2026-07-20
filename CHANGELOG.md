@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.15.0 - 2026-07-21
+
+### Added
+
+- Added a bounded AI navigation-intent router for free-form job and housing recommendation requests and contextual next-page replies.
+
+### Changed
+
+- Removed phrase-regex routing for natural recommendation-list requests; fixed slash commands remain deterministic and free-text navigation now uses Structured Outputs with confidence and domain checks.
+- Navigation AI uses the linked Codex account first and the existing capped API fallback policy only for recognized quota or authentication failures.
+
 ## 1.14.1 - 2026-07-21
 
 ### Fixed

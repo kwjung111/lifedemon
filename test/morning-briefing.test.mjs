@@ -38,8 +38,7 @@ const {
   db: housingDb, setApplication, setSetting, upsertNotice,
 } = await import("../src/db.mjs");
 const {
-  jobApplicationStatus, jobDb, restoreJobApplicationStatus, saveJobAssessment,
-  setJobSetting, upsertJobPosting,
+  jobApplicationStatus, jobDb, saveJobAssessment, setJobSetting, upsertJobPosting,
 } = await import("../src/apps/jobs/db.mjs");
 const { companyVerificationFingerprint, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
@@ -140,29 +139,6 @@ test("shows only the remaining housing recommendations on request", async () => 
   assert.match(payload.text, /주택 추천/);
   assert.equal(context.items.length, 1);
   assert.equal(context.items[0].domain, "housing");
-});
-
-test("understands a natural request to show all jobs despite punctuation", async () => {
-  restoreJobApplicationStatus(jobId);
-  assert.equal(await briefingBotModule.handleMessage({
-    message_id: 5100, text: "채용 다 보여줘.", chat: { id: 1 },
-  }), true);
-  const row = platformDb.prepare("SELECT payload_json, context_json FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
-  const payload = JSON.parse(row.payload_json);
-  const context = JSON.parse(row.context_json);
-  assert.match(payload.text, /채용 추천/);
-  assert.equal(context.domain, "jobs");
-  assert.equal(context.nextOffset, context.items.length);
-});
-
-test("uses the replied job list as context for a generic next-page request", async () => {
-  const delivered = await sendMoreRecommendations("jobs", { limit: 1 });
-  assert.equal(await briefingBotModule.handleMessage({
-    message_id: 5101, text: "더 보여줘", chat: { id: 1 },
-    reply_to_message: { message_id: delivered.message_id },
-  }), true);
-  const row = platformDb.prepare("SELECT payload_json FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
-  assert.match(JSON.parse(row.payload_json).text, /더 보여드릴 공고가 없습니다/);
 });
 
 test("keeps Inbox actions replyable without adding action buttons", async () => {

@@ -6,6 +6,7 @@ import { reminderBotModule } from "./apps/reminders/bot-module.mjs";
 import { briefingBotModule } from "./apps/briefing/bot-module.mjs";
 import { inboxBotModule } from "./apps/inbox/bot-module.mjs";
 import { manualBotModule } from "./apps/manual/bot-module.mjs";
+import { navigationBotModule } from "./apps/navigation/bot-module.mjs";
 
 export const botModules = [
   manualBotModule,
@@ -15,6 +16,7 @@ export const botModules = [
   jobsBotModule,
   feedbackBotModule,
   managerBotModule,
+  navigationBotModule,
   inboxBotModule,
 ];
 

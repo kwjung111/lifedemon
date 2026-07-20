@@ -3,27 +3,7 @@ import { sendMessage } from "../../telegram.mjs";
 import { feedbackTargetQuestion, resolveFeedbackTarget } from "../feedback/reference.mjs";
 import { housingBotModule } from "../housing/bot-module.mjs";
 import { jobsBotModule } from "../jobs/bot-module.mjs";
-import { briefingItem, sendMoreRecommendations, sendMorningBriefing } from "./report.mjs";
-
-const housingWords = /(?:주택|임대|청약)/;
-const jobWords = /(?:채용|직업|잡)/;
-const listWords = /(?:보여|알려|목록|꺼내|확인)/;
-const quantityWords = /(?:더|나머지|다|전부|전체|모두)/;
-
-function normalizedRequest(text) {
-  return String(text || "").trim().replace(/[.!?？~]+$/g, "").replace(/\s+/g, " ");
-}
-
-function domainListRequest(text, domainWords) {
-  const value = normalizedRequest(text);
-  return domainWords.test(value) && listWords.test(value);
-}
-
-function genericMoreRequest(text) {
-  const value = normalizedRequest(text);
-  return quantityWords.test(value) && listWords.test(value)
-    && !housingWords.test(value) && !jobWords.test(value);
-}
+import { briefingItem, sendMorningBriefing } from "./report.mjs";
 
 export const briefingBotModule = {
   id: "briefing",
@@ -39,38 +19,7 @@ export const briefingBotModule = {
     }
     const replyMessageId = message.reply_to_message?.message_id;
     const context = replyMessageId ? telegramMessageContext(replyMessageId) : null;
-    const wantsHousing = domainListRequest(text, housingWords);
-    const wantsJobs = domainListRequest(text, jobWords);
-    const wantsNextPage = genericMoreRequest(text);
-    if (!replyMessageId && wantsHousing) {
-      await sendMoreRecommendations("housing");
-      return true;
-    }
-    if (!replyMessageId && wantsJobs) {
-      await sendMoreRecommendations("jobs");
-      return true;
-    }
-    if (context?.domain === "housing" && (wantsHousing || wantsNextPage)) {
-      await sendMoreRecommendations("housing", {
-        offset: Number(context.nextOffset) || context.items?.length || 0,
-      });
-      return true;
-    }
-    if (context?.domain === "jobs" && (wantsJobs || wantsNextPage)) {
-      await sendMoreRecommendations("jobs", {
-        offset: Number(context.nextOffset) || context.items?.length || 0,
-      });
-      return true;
-    }
     if (context?.domain !== "briefing") return false;
-    if (wantsHousing) {
-      await sendMoreRecommendations("housing", { offset: Number(context.shownByDomain?.housing) || 0 });
-      return true;
-    }
-    if (wantsJobs) {
-      await sendMoreRecommendations("jobs", { offset: Number(context.shownByDomain?.jobs) || 0 });
-      return true;
-    }
     const feedbackText = context.pendingFeedback ? `${context.pendingFeedback}\n추가 답변: ${text}` : text;
     const { items } = briefingItem(context, feedbackText);
     const resolution = resolveFeedbackTarget(feedbackText, items);
