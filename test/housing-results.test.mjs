@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-results-"));
+process.env.MONITOR_DATA_DIR = dataDir;
 process.env.HOUSING_DATA_DIR = dataDir;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
@@ -21,9 +22,11 @@ const {
 } = await import("../src/db.mjs");
 const { housingResultKeywords, runHousingResultChecks } = await import("../src/apps/housing/result-checker.mjs");
 const { rankHousingCandidates } = await import("../src/report.mjs");
+const { platformDb } = await import("../src/core/state.mjs");
 
 test.after(() => {
   db.close();
+  platformDb.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
