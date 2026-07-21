@@ -5,11 +5,6 @@ import {
 } from "./db.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { recordFeedbackEvent, telegramMessageContext } from "../../core/state.mjs";
-import {
-  ruleProposalKeyboard,
-  ruleProposalMessage,
-  saveInterpretedFeedback,
-} from "../feedback/service.mjs";
 import { formatUndoResult, undoLatestFeedback } from "../feedback/undo.mjs";
 import { proposeJobApplicationFollowup } from "./application-followup.mjs";
 
@@ -32,7 +27,7 @@ export function createJobsBotModule() {
   canHandleMessage(_message, context) {
     const semantic = context?.semantic;
     return semantic?.route === "job_status"
-      || (["feedback", "feedback_undo"].includes(semantic?.route) && semantic?.domain === "jobs");
+      || (semantic?.route === "feedback_undo" && semantic?.domain === "jobs");
   },
 
   canHandleCallback(query) {
@@ -89,7 +84,7 @@ export function createJobsBotModule() {
     if (!replyMessageId) return false;
     const deliveryContext = routedContext || telegramMessageContext(replyMessageId);
     const semantic = deliveryContext?.semantic;
-    if (!["feedback", "feedback_undo"].includes(semantic?.route) || semantic.domain !== "jobs") return false;
+    if (semantic?.route !== "feedback_undo" || semantic.domain !== "jobs") return false;
     const feedbackText = message.briefingFeedbackText || (deliveryContext?.pendingFeedback
       ? `${deliveryContext.pendingFeedback}\n추가 답변: ${text}`
       : text);
@@ -109,108 +104,12 @@ export function createJobsBotModule() {
       if (job) candidates.push({ ...job, index: 1 });
     }
     if (!candidates.length) return false;
-    const feedbackContext = { domain: "jobs", kind: "digest", items: candidates.map((item) => ({ index: item.index, id: item.id })) };
-    if (semantic.route === "feedback_undo") {
-      const undoTarget = semantic.targetIndex
-        ? candidates.find((candidate) => Number(candidate.index) === semantic.targetIndex)
-        : null;
-      await sendMessage(formatUndoResult(undoLatestFeedback({
-        domain: "jobs", entityId: undoTarget?.id || null, text: feedbackText,
-      })));
-      return true;
-    }
-    const interpretation = {
-      intent: semantic.feedbackIntent,
-      targetIndex: semantic.targetIndex,
-      scope: semantic.scope,
-      strength: semantic.strength,
-      preference: semantic.preference,
-      keywords: semantic.keywords,
-      aspects: semantic.aspects,
-      ruleKind: semantic.ruleKind,
-      ruleKeyword: semantic.ruleKeyword,
-      confidence: semantic.confidence,
-      reason: semantic.reason,
-      clarification: semantic.clarification,
-      source: "global-ai",
-    };
-    const job = semantic.targetIndex
+    const undoTarget = semantic.targetIndex
       ? candidates.find((candidate) => Number(candidate.index) === semantic.targetIndex)
       : null;
-    if (interpretation.intent === "clarify") {
-      await sendMessage(
-        interpretation.clarification || "어느 공고에 대한 어떤 의견인지 조금만 더 알려주세요.",
-        {}, { context: { ...feedbackContext, pendingFeedback: feedbackText } },
-      );
-      return true;
-    }
-    if (interpretation.intent === "not_feedback") {
-      await sendMessage("공고에 대한 의견으로 이해하지 못했어요. 좋거나 아쉬운 점을 평소 말투로 조금만 더 알려주세요.", {}, {
-        context: { ...feedbackContext, pendingFeedback: feedbackText },
-      });
-      return true;
-    }
-    if (interpretation.intent === "undo") {
-      await sendMessage(formatUndoResult(undoLatestFeedback({
-        domain: "jobs", entityId: job?.id || null, text: feedbackText,
-      })));
-      return true;
-    }
-    if (!job) {
-      await sendMessage("어느 공고에 대한 의견인지 회사명이나 번호를 한 번만 알려주세요.", {}, {
-        context: { ...feedbackContext, pendingFeedback: feedbackText },
-      });
-      return true;
-    }
-    if (interpretation.intent === "applied") {
-      const previousApplicationStatus = jobApplicationStatus(job.id);
-      setJobApplication(job.id, "applied");
-      recordFeedbackEvent({
-        domain: "jobs", entityId: job.id, signal: "applied", subjectType: "company", subjectValue: job.company,
-        sourceKey: message.message_id ? `message:${message.message_id}` : null,
-        rawText: feedbackText, metadata: {
-          company: job.company, title: job.title, source: job.source, previousApplicationStatus,
-          interpretation,
-        },
-      });
-      await sendApplicationConfirmation(job);
-      return true;
-    }
-    const previousApplicationStatus = jobApplicationStatus(job.id);
-    const previousRecommendationHidden = jobRecommendationHidden(job.id);
-    const feedback = saveInterpretedFeedback({
-      domain: "jobs",
-      entityId: job.id,
-      text: feedbackText,
-      title: job.title,
-      company: job.company,
-      source: job.source,
-      interpretation,
-      metadata: { previousApplicationStatus, previousRecommendationHidden },
-      sourceKey: message.message_id ? `message:${message.message_id}` : null,
-    });
-    if (!feedback) {
-      await sendMessage("피드백 의미를 안전하게 적용하지 못했습니다. 의견을 조금만 더 구체적으로 알려주세요.");
-      return true;
-    }
-    if (feedback.signal === "negative") {
-      setJobRecommendationHidden(job.id, true);
-      if (feedback.proposal) {
-        await sendMessage(ruleProposalMessage(
-          feedback.proposal,
-          `이 공고는 즉시 숨기고, 승인하면 ${job.company}의 향후 공고도 제외`,
-        ), { reply_markup: ruleProposalKeyboard(feedback.proposal) }, { context: feedbackContext });
-      } else if (feedback.alreadyActive) {
-        await sendMessage(`이미 앞으로 제외 중인 회사예요. 현재 공고도 숨겼습니다.\n${job.company} — ${job.title}`, {}, { context: feedbackContext });
-      } else {
-        await sendMessage(`🧠 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n이 공고는 추천에서 제외했습니다.\n${job.company} — ${job.title}`, {}, { context: feedbackContext });
-      }
-    } else if (feedback.signal === "mixed") {
-      await sendMessage(`🧠 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n좋고 아쉬운 점을 함께 저장했습니다. 아직 이 공고를 숨기지는 않았어요.\n${job.company} — ${job.title}`, {}, { context: feedbackContext });
-    } else {
-      setJobRecommendationHidden(job.id, false);
-      await sendMessage(`🧠 이렇게 이해했어요: ${interpretation.preference || interpretation.reason}\n다음 추천 순서에 반영합니다.\n${job.company} — ${job.title}`, {}, { context: feedbackContext });
-    }
+    await sendMessage(formatUndoResult(undoLatestFeedback({
+      domain: "jobs", entityId: undoTarget?.id || null, text: feedbackText,
+    })));
     return true;
   },
   };

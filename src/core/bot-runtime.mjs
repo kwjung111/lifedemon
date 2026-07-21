@@ -22,6 +22,15 @@ export function createBotRuntime({
       && chat?.type === "private";
   }
 
+  async function routeMessageToModule(message, context) {
+    const priority = modules.filter((module) => module.canHandleMessage?.(message, context));
+    const orderedModules = [...priority, ...modules.filter((module) => !priority.includes(module))];
+    for (const module of orderedModules) {
+      if (await module.handleMessage(message, context)) return module.id;
+    }
+    return null;
+  }
+
   async function handleCallback(query) {
     if (!authorized({ chat: query.message?.chat, from: query.from })) {
       await telegram("answerCallbackQuery", {
@@ -78,13 +87,10 @@ export function createBotRuntime({
       }
     }
     const context = semantic ? { ...(baseContext || {}), semantic } : baseContext;
-    const priority = modules.filter((module) => module.canHandleMessage?.(message, context));
-    const orderedModules = [...priority, ...modules.filter((module) => !priority.includes(module))];
-    for (const module of orderedModules) {
-      if (await module.handleMessage(message, context)) {
-        log("Telegram message routed", { ...routeMeta, module: module.id });
-        return;
-      }
+    const moduleId = await routeMessageToModule(message, context);
+    if (moduleId) {
+      log("Telegram message routed", { ...routeMeta, module: moduleId });
+      return;
     }
     log("Telegram message unhandled", routeMeta);
     if (routeMeta.itemNumber && !routeMeta.replyToMessageId) {

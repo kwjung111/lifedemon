@@ -7,6 +7,11 @@ import { semanticPreferences, semanticPreferenceScore } from "./apps/feedback/pr
 const verdictLabel = { likely: "✅ 적합 가능성 높음", possible: "🟡 가능성 있음", review: "🔎 추가 확인" };
 const sourceOrder = ["마이홈 API", "청년안심주택", "HUG"];
 
+function noticeSummary(notice) {
+  try { return JSON.parse(notice.ai_result_json || "null")?.summary || null; }
+  catch { return null; }
+}
+
 function healthTime(value) {
   if (!value) return "아직 없음";
   const date = new Date(value);
@@ -191,7 +196,14 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
       context: {
         domain: "housing",
         kind: "digest",
-        items: page.notices.map((notice, index) => ({ index: index + 1, id: notice.id })),
+        items: page.notices.map((notice, index) => ({
+          index: index + 1,
+          id: notice.id,
+          domain: "housing",
+          title: notice.title,
+          source: notice.source,
+          summary: noticeSummary(notice),
+        })),
       },
     });
     if (message?.message_id) saveDigestItems(message.message_id, page.notices.map((notice) => notice.id));

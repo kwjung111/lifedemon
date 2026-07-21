@@ -129,6 +129,35 @@ test("interprets free-form text exactly once and forwards only the structured re
   assert.equal(receivedContext.semantic.route, "job_status");
 });
 
+test("routes one mixed-domain feedback reply to the central recommendation agent", async () => {
+  const routed = [];
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{
+      id: "feedback-agent",
+      canHandleMessage: (_message, context) => context?.semantic?.route === "feedback",
+      handleMessage: async (_message, context) => {
+        routed.push(context.semantic.domain);
+        return true;
+      },
+    }],
+    messageContext: () => ({ domain: "briefing", kind: "digest", items: [
+      { index: 1, domain: "housing", id: "home" },
+      { index: 2, domain: "jobs", id: "job" },
+    ] }),
+    interpretMessage: async () => ({
+      route: "feedback", domain: "mixed", confidence: 99,
+    }),
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({
+    chat: { id: 1, type: "private" }, from: { id: 1 }, text: "주택은 별로고 채용은 좋아",
+    reply_to_message: { message_id: 10 },
+  });
+  assert.deepEqual(routed, ["mixed"]);
+});
+
 test("does not execute a module when the global interpreter fails", async () => {
   const sent = [];
   let executed = false;

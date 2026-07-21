@@ -48,7 +48,7 @@ const {
   formatMorningBriefing, morningBriefingSnapshot, sendMorningBriefing, sendMoreRecommendations,
 } = await import("../src/apps/briefing/report.mjs");
 const { briefingBotModule } = await import("../src/apps/briefing/bot-module.mjs");
-const { jobsBotModule } = await import("../src/apps/jobs/bot-module.mjs");
+const { executeRecommendationAgentTool, recommendationAgentItems } = await import("../src/apps/feedback/agent.mjs");
 const { createInboxItem } = await import("../src/apps/inbox/store.mjs");
 
 function housingFixture(index) {
@@ -124,17 +124,13 @@ test("routes a mixed briefing number to the correct application tracker", async 
   const context = JSON.parse(row.context_json);
   const target = context.items.find((item) => item.domain === "jobs");
   assert.ok(target);
-  assert.equal(await jobsBotModule.handleMessage({
-    message_id: 5001, text: `${target.index}번 지원했어`, chat: { id: 1 },
-    reply_to_message: { message_id: delivered.message_id },
-  }, {
-    ...context,
-    semantic: {
-      route: "feedback", domain: "jobs", targetIndex: target.index, feedbackIntent: "applied",
-      scope: "item", strength: "high", preference: "지원 완료", keywords: [], aspects: [],
-      confidence: 99, reason: "지원 완료를 명시함",
-    },
-  }), true);
+  const items = recommendationAgentItems(context);
+  const result = await executeRecommendationAgentTool({
+    tool: "track_application", domain: "jobs", target_index: target.index, target_indexes: [],
+    intent: null, scope: null, strength: null, preference: null, keywords: [], aspects: [],
+    rule_kind: null, rule_keyword: null,
+  }, { items, text: `${target.index}번 지원했어`, messageId: 5001 });
+  assert.equal(result.ok, true);
   assert.equal(jobApplicationStatus(jobId), "applied");
 });
 
