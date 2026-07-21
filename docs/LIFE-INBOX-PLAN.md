@@ -1,45 +1,45 @@
-# Life Inbox: remaining cognitive-load controls
+# Life Inbox: 남은 인지 부담 제어 계획
 
-Principles 1, 2, 4, 5, 7, and 9 are implemented in version 1.13.0. The remaining work should be added in the order 8 → 3 → 6 because confidence must inform risk, and both must inform interruption priority.
+원칙 1, 2, 4, 5, 7, 9는 1.13.0에 구현했습니다. 남은 작업은 8 → 3 → 6 순서로 추가합니다. 신뢰도가 위험 판단의 근거가 되고, 신뢰도와 위험도가 사용자를 방해할 우선순위를 결정해야 하기 때문입니다.
 
-## 8. Confidence and evidence policy
+## 8. 신뢰도와 근거 정책
 
-Add a shared `decision-envelope` value with `confidence`, `evidence[]`, `missingFacts[]`, `reversible`, and `sourceUpdatedAt`. AI output may summarize evidence but may not create evidence. Use three handling bands:
+`confidence`, `evidence[]`, `missingFacts[]`, `reversible`, `sourceUpdatedAt`을 담는 공용 `decision-envelope` 값을 추가합니다. AI 출력은 근거를 요약할 수 있지만 근거를 새로 만들 수는 없습니다. 다음 세 구간으로 처리합니다.
 
-- 0.85–1.00: perform only reversible local actions and show the evidence source when the fact matters.
-- 0.60–0.84: save with visible assumptions; do not schedule, send, purchase, delete, or mutate an external system.
-- Below 0.60 or a missing critical fact: hold the action and ask one question only when the answer changes the next action.
+- 0.85~1.00: 되돌릴 수 있는 로컬 행동만 수행하고, 중요한 사실에는 근거 출처를 표시합니다.
+- 0.60~0.84: 가정을 보이면서 저장합니다. 예약, 전송, 구매, 삭제 또는 외부 시스템 변경은 하지 않습니다.
+- 0.60 미만 또는 중요 사실 누락: 행동을 보류합니다. 답이 다음 행동을 바꾸는 경우에만 질문 하나를 합니다.
 
-Dates, money, eligibility, identity, recipients, and external URLs are always critical facts. Acceptance tests must cover invented dates/URLs, stale evidence, conflicting sources, and low-confidence no-op behavior. Store decisions for calibration, then compare predicted bands with later corrections before tuning thresholds.
+날짜, 금액, 자격, 신원, 수신자와 외부 URL은 항상 중요 사실입니다. 수용 테스트에는 생성된 날짜·URL, 오래된 근거, 충돌하는 출처와 낮은 신뢰도의 무변경 동작을 포함해야 합니다. 판단 기록을 저장하고 이후 사용자 수정과 예측 구간을 비교한 뒤 임계값을 조정합니다.
 
-## 3. Risk-based confirmation policy
+## 3. 위험 기반 확인 정책
 
-Introduce one central policy module instead of per-app confirmation branches:
+앱마다 확인 분기를 복사하지 않고 중앙 정책 모듈 하나를 둡니다.
 
-| Risk | Examples | Confirmation |
+| 위험도 | 예시 | 확인 방식 |
 | --- | --- | --- |
-| Low | save note/link, local tag, reversible correction | none |
-| Medium | create or move reminder/calendar event, change a recurring filter | one compact confirmation showing the assumption/diff |
-| High | send to another person, application submission, purchase/payment, credential or destructive change | explicit confirmation every time; never inferred from silence |
+| 낮음 | 메모·링크 저장, 로컬 태그, 되돌릴 수 있는 수정 | 확인 없음 |
+| 중간 | 알림·캘린더 일정 생성·이동, 반복 필터 변경 | 가정 또는 변경 차이를 보여주는 짧은 확인 한 번 |
+| 높음 | 다른 사람에게 전송, 지원서 제출, 구매·결제, 인증정보 또는 파괴적 변경 | 매번 명시적으로 확인하며 침묵으로 추론하지 않음 |
 
-The policy receives the confidence envelope, action type, reversibility, external side effect, and cost. It returns `execute`, `propose`, or `block`. Proposed actions expire and are idempotent. Tests must prove that paraphrasing cannot bypass confirmation and a replay cannot execute twice.
+정책은 신뢰도 정보, 행동 유형, 되돌릴 수 있는지, 외부 부작용과 비용을 입력으로 받습니다. 결과는 `execute`, `propose`, `block` 중 하나입니다. 제안에는 만료 시각과 멱등성을 적용합니다. 표현을 바꿔 확인을 우회할 수 없고 재처리가 두 번 실행되지 않는지 테스트로 증명해야 합니다.
 
-## 6. Attention budget
+## 6. 관심 예산
 
-Keep one scheduled weekday briefing. Add an `attention_deliveries` ledger with an event fingerprint, severity, first/last delivery time, and acknowledgement state. Rank candidates by `time pressure × consequence × required user action × confidence`.
+예약된 평일 브리핑은 한 번만 유지합니다. 이벤트 지문, 심각도, 최초·최근 전송 시각과 확인 상태를 가진 `attention_deliveries` 원장을 추가합니다. 후보 우선순위는 `시간 압박 × 결과의 크기 × 필요한 사용자 행동 × 신뢰도`로 계산합니다.
 
-- Ordinary information waits for the 09:00 briefing.
-- An interrupt is allowed only for a deadline within 24 hours, a material state change, or a user-approved reminder time.
-- The same fingerprint cannot interrupt twice unless the deadline or consequence changed.
-- The briefing shows the top three next actions, collapses unchanged domains, and leaves the rest behind one natural “더 보여줘” request.
-- If no action or material change exists, send one explicit “변경 없음” line, not repeated detail.
+- 일반 정보는 09:00 브리핑까지 기다립니다.
+- 24시간 안의 마감, 중요한 상태 변경 또는 사용자가 승인한 알림 시각에만 즉시 방해할 수 있습니다.
+- 마감이나 결과가 바뀌지 않았다면 같은 지문으로 두 번 즉시 알리지 않습니다.
+- 브리핑에는 다음 행동 상위 세 개만 표시하고 바뀌지 않은 영역은 접습니다. 나머지는 자연어 `더 보여줘` 요청 뒤에 둡니다.
+- 행동이나 중요한 변화가 없으면 상세 내용을 반복하지 않고 `변경 없음` 한 줄만 보냅니다.
 
-Acceptance tests should simulate duplicate crawls, changed deadlines, weekend accumulation, acknowledged items, and a day with more than 100 candidates while keeping user-facing output bounded.
+수용 테스트는 중복 수집, 바뀐 마감일, 주말 누적, 확인한 항목과 후보가 100개 넘는 날을 재현하되 사용자 출력은 제한된 크기를 유지해야 합니다.
 
-## Token and maintenance guardrails
+## 토큰과 유지보수 제한
 
-- Fixed slash commands and callback protocols remain deterministic and use zero model tokens.
-- Every free-form message uses exactly one global structured interpretation; no module-level interpretation or semantic-regex fallback is allowed in the same route.
-- Prompts receive at most 3,000 characters of user text, bounded public reply labels, and public attachment metadata, never attachment bodies or credentials.
-- Provider token totals are not estimated as exact values when the CLI does not expose them.
-- New risk, confidence, and attention logic must remain shared policy modules. Domain apps provide facts and execute authorized actions; they do not copy policy branches.
+- 고정 슬래시 명령과 콜백 규약은 결정적으로 처리하며 모델 토큰을 사용하지 않습니다.
+- 모든 자유문장은 전역 구조화 해석을 정확히 한 번만 사용합니다. 같은 경로 안에서 모듈별 해석 또는 의미 정규식 대체 경로를 추가하지 않습니다.
+- 프롬프트에는 사용자 문장 최대 3,000자, 제한된 공개 답장 라벨과 공개 첨부 메타데이터만 넣습니다. 첨부 본문과 인증정보는 넣지 않습니다.
+- CLI가 토큰 총량을 제공하지 않으면 정확한 값처럼 추정하지 않습니다.
+- 새 위험도, 신뢰도와 관심 정책은 공용 정책 모듈로 유지합니다. 도메인 앱은 사실을 제공하고 승인된 행동을 실행할 뿐 정책 분기를 복사하지 않습니다.

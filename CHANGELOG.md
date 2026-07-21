@@ -1,341 +1,341 @@
-# Changelog
+# 변경 이력
 
 ## 1.17.0 - 2026-07-21
 
-### Added
+### 추가
 
-- Added natural `왜 안 보여?` explanations for job and housing recommendations.
-- Distinguished applied, ignored, durable-rule, inactive, duplicate, expired, pending-review, failed-review, filter-excluded, and already-visible states from persisted evidence.
-- Kept explanation messages replyable so an incorrect applied/ignored action can be undone without another menu or button.
+- 채용·주택 추천에 자연스러운 `왜 안 보여?` 설명을 추가했습니다.
+- 저장된 근거로 지원 완료, 관심 없음, 영구 규칙, 비활성, 중복, 마감, 평가 대기·실패, filter 제외와 이미 노출 중인 상태를 구분합니다.
+- 설명 메시지에 계속 답장할 수 있어 잘못 기록한 지원·관심 없음 상태를 별도 메뉴나 버튼 없이 취소할 수 있습니다.
 
-### Safety
+### 안전
 
-- AI identifies only the requested domain and posting phrase; exclusion reasons are computed deterministically from current databases and recommendation snapshots.
-- Ambiguous names produce one numbered clarification and unknown postings never receive an invented explanation.
+- AI는 요청한 영역과 공고 표현만 식별하고 제외 이유는 현재 DB와 추천 snapshot에서 기계적으로 계산합니다.
+- 이름이 모호하면 번호로 한 번 더 묻고 모르는 공고에는 설명을 만들지 않습니다.
 
 ## 1.16.0 - 2026-07-21
 
-### Changed
+### 변경
 
-- Unified all free-form Telegram intent, target, feedback, Inbox, reminder, tracking, navigation, and manager routing into one bounded structured AI interpretation call.
-- Kept fixed slash commands and callback protocols deterministic and removed per-module semantic parsers and regex fallbacks.
-- Consolidated recommendation-list execution into the briefing app and documented the AI/code responsibility boundary.
+- 모든 Telegram 자유문장의 의도, 대상, 피드백, Inbox, 알림, 추적, 목록 이동과 운영 질문 routing을 제한된 구조화 AI 해석 한 번으로 통합했습니다.
+- 고정 slash command와 callback protocol은 결정적으로 유지하고 모듈별 의미 parser와 정규식 fallback을 제거했습니다.
+- 추천 목록 실행을 브리핑 앱으로 통합하고 AI와 코드의 책임 경계를 문서화했습니다.
 
-### Fixed
+### 수정
 
-- Prevented low-confidence or unavailable interpretation from mutating state, while retaining reply context and concise clarification.
+- 답장 문맥과 짧은 확인 질문은 유지하면서 신뢰도가 낮거나 해석기를 사용할 수 없을 때 상태가 변경되지 않도록 했습니다.
 
 ## 1.15.0 - 2026-07-21
 
-### Added
+### 추가
 
-- Added a bounded AI navigation-intent router for free-form job and housing recommendation requests and contextual next-page replies.
+- 자유문장 주택·채용 추천 요청과 문맥을 잇는 다음 page 답장을 위한 제한된 AI 목록 이동 router를 추가했습니다.
 
-### Changed
+### 변경
 
-- Removed phrase-regex routing for natural recommendation-list requests; fixed slash commands remain deterministic and free-text navigation now uses Structured Outputs with confidence and domain checks.
-- Navigation AI uses the linked Codex account first and the existing capped API fallback policy only for recognized quota or authentication failures.
+- 자연어 추천 목록 요청의 문구 정규식 routing을 제거했습니다. 고정 slash command는 결정적으로 유지하고 자유문장 목록 이동은 신뢰도와 domain을 검사하는 Structured Outputs를 사용합니다.
+- 목록 이동 AI는 연동된 Codex 계정을 먼저 사용하고 quota 또는 인증 오류가 확인될 때만 기존 횟수 제한 API fallback을 사용합니다.
 
 ## 1.14.1 - 2026-07-21
 
-### Fixed
+### 수정
 
-- Natural list requests such as `채용 다 보여줘`, `채용 전체 목록 보여줘`, and punctuation variants now route to job recommendations.
-- Replying `더 보여줘` to a job or housing recommendation list now advances to the next page instead of repeating or falling through.
-- Recommendation pages now show their current range and total while remaining bounded to one Telegram message at a time.
+- `채용 다 보여줘`, `채용 전체 목록 보여줘`와 문장부호 변형 같은 자연어 목록 요청이 채용 추천으로 연결됩니다.
+- 주택·채용 추천 목록에 `더 보여줘`라고 답장하면 반복되거나 빠져나가지 않고 다음 page로 이동합니다.
+- 추천 page는 Telegram 메시지 한 건의 크기를 지키면서 현재 범위와 전체 건수를 표시합니다.
 
 ## 1.14.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a one-screen Telegram manual, a separate detailed command view, and a Korean user guide.
-- Added replyable/paged Inbox lists, numbered completion/correction/cancellation, stored-link access, and Telegram attachment re-sending.
-- Added realistic UX regression coverage for reply-context priority, paging, stale actions, invalid dates, and the seven-command menu.
+- 한 화면 Telegram 사용법, 별도의 상세 명령 화면과 한국어 사용자 안내를 추가했습니다.
+- 답장·page 이동이 가능한 Inbox 목록, 번호 기반 완료·수정·취소, 저장한 링크 열기와 Telegram 첨부 파일 재전송을 추가했습니다.
+- 답장 문맥 우선순위, page 이동, 오래된 행동, 잘못된 날짜와 일곱 개 명령 메뉴를 실제 사용 흐름으로 검증하는 회귀 test를 추가했습니다.
 
-### Changed
+### 변경
 
-- Reduced the visible Telegram command menu from fourteen entries to seven common actions while keeping advanced commands available.
-- Reply context now takes precedence over broad reminder, feedback, briefing, and manager keyword routes.
-- Inbox events explicitly state that timed reminders are not registered; users may request one from the confirmation reply.
-- Morning briefings rank non-stale Inbox actions and retain Inbox reply targets without adding buttons.
+- 보이는 Telegram 명령 메뉴를 열네 개에서 자주 쓰는 일곱 개로 줄이고 고급 명령은 계속 사용할 수 있게 했습니다.
+- 답장 문맥이 넓은 알림, 피드백, 브리핑과 운영 keyword route보다 우선합니다.
+- Inbox 일정에는 정시 알림이 등록되지 않았음을 명시하고 확인 메시지의 답장으로 알림을 요청할 수 있게 했습니다.
+- 아침 브리핑은 오래되지 않은 Inbox 행동에 우선순위를 적용하고 버튼 추가 없이 답장 대상을 유지합니다.
 
-### Fixed
+### 수정
 
-- Rejected impossible calendar dates instead of allowing JavaScript date rollover.
-- Prevented unfinished reminder clarification from consuming unrelated messages or attachments.
-- Prevented old events and far-future events from permanently hiding recent undated tasks.
+- JavaScript 날짜 rollover를 허용하지 않고 불가능한 Calendar 날짜를 거부했습니다.
+- 완료되지 않은 알림 확인 질문이 관계없는 메시지나 첨부 파일을 소비하지 않도록 했습니다.
+- 지난 일정과 먼 미래 일정 때문에 최근의 날짜 없는 할 일이 계속 가려지지 않도록 했습니다.
 
 ## 1.13.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a modular Life Inbox for command-free events, tasks, links, notes, and Telegram attachment metadata.
-- Added assumption-visible saves, conclusion-first single-message confirmations, explicit next actions, natural reply corrections/completion/cancellation, and natural feedback capture.
-- Added app-owned item revision history and rules-vs-AI classifier usage telemetry.
+- 명령어 없이 일정, 할 일, 링크, 메모와 Telegram 첨부 metadata를 저장하는 모듈형 Life Inbox를 추가했습니다.
+- 가정을 보여주는 저장, 결론부터 말하는 단일 확인 메시지, 명확한 다음 행동, 자연어 답장 수정·완료·취소와 피드백 저장을 추가했습니다.
+- 앱 소유 항목 수정 이력과 규칙·AI classifier 사용 telemetry를 추가했습니다.
 
-### Changed
+### 변경
 
-- The Telegram runtime now routes captions and captionless supported attachments, with Life Inbox registered last so existing reminder, briefing, housing, job, feedback, and manager semantics keep precedence.
-- The weekday morning briefing includes at most three active Life Inbox next actions inside the existing single message.
+- Telegram runtime이 caption과 caption 없는 지원 첨부 파일을 routing합니다. Life Inbox를 마지막에 등록해 기존 알림, 브리핑, 주택, 채용, 피드백과 운영 의미를 우선합니다.
+- 평일 아침 브리핑 한 메시지에 활성 Life Inbox 다음 행동을 최대 세 개 포함합니다.
 
 ## 1.12.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added one weekday 09:00 KST morning briefing that combines today's approved reminders, housing recommendations, job recommendations, and application counts.
-- Added `/briefing`, mixed-domain numbered replies, and natural `주택 더 보여줘` / `채용 더 보여줘` follow-up retrieval.
-- Added per-domain recommendation signatures so unchanged sections collapse to an explicit `변경 없음` instead of repeating the same list.
+- 오늘 승인한 알림, 주택·채용 추천과 지원 건수를 합친 평일 09:00 KST 아침 브리핑을 추가했습니다.
+- `/briefing`, 여러 domain이 섞인 번호 답장과 자연어 `주택 더 보여줘`·`채용 더 보여줘` 후속 조회를 추가했습니다.
+- Domain별 추천 signature를 추가해 목록이 같으면 반복하지 않고 `변경 없음`으로 줄입니다.
 
-### Changed
+### 변경
 
-- Housing collection and AI review now prepare data at 06:30 KST, and job collection/filtering prepares data at 07:40 KST; neither preparation job sends its former standalone digest.
-- The combined message shows at most three top recommendations per domain while retaining every collected and analyzed row for on-demand retrieval.
+- 주택 수집·AI 평가는 06:30 KST, 채용 수집·필터링은 07:40 KST에 데이터를 준비합니다. 준비 작업은 이전의 독립 브리핑을 보내지 않습니다.
+- 통합 메시지는 domain별 상위 추천을 최대 세 개만 보여주고 수집·분석한 모든 행은 요청 시 조회할 수 있도록 보존합니다.
 
 ## 1.11.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a durable Telegram update inbox with retry/dead-letter handling, private chat-and-user authorization, and replay-safe feedback event keys.
-- Added daily atomic SQLite backups with 30-day rotation and a dedicated systemd timer.
-- Added an explicit, daily-budgeted Codex API fallback with a once-per-day Telegram cost notice.
+- 재시도·dead letter 처리, private chat·사용자 인증과 replay-safe 피드백 event key를 갖춘 durable Telegram update inbox를 추가했습니다.
+- 30일 rotation과 전용 systemd timer를 사용하는 일일 SQLite 백업을 추가했습니다.
+- 일일 예산을 제한하고 하루 한 번 Telegram 비용 알림을 보내는 명시적인 Codex API fallback을 추가했습니다.
 
-### Changed
+### 변경
 
-- All structured Codex jobs now run in an ephemeral read-only workspace with a sanitized environment, stdin prompts, strict schemas, and forced timeout cleanup.
-- Application tracking and recommendation visibility are independent: negative feedback can hide a recommendation without erasing an existing application.
-- Current preferences use the latest canonical opinion per concept; semantic preference influence is bounded beneath hard eligibility and official assessment scores.
-- Housing and job weekday timers no longer catch up during weekends, and batch jobs share one lock to avoid overlapping AI work.
+- 모든 구조화 Codex 작업을 일회성 read-only workspace에서 실행하며 정제된 환경, stdin prompt, 엄격한 schema와 timeout 강제 정리를 사용합니다.
+- 지원 추적과 추천 표시를 분리해 부정 피드백이 기존 지원 기록을 지우지 않고 추천만 숨길 수 있습니다.
+- 현재 선호는 개념별 최신 정규화 의견을 사용하며 의미 선호의 영향은 필수 자격과 공식 평가 점수보다 낮게 제한합니다.
+- 주택·채용 평일 timer는 놓친 실행을 보충하지 않으며 batch 작업은 하나의 lock을 공유해 AI 작업 중복을 막습니다.
 
-### Fixed
+### 수정
 
-- Rejected unsafe or off-domain Playwright navigation, protected stored browser sessions with owner-only permissions, and retained prior source state when a crawl validates zero rows.
-- Preserved valid feedback metadata, all active preference events, mixed feedback aspects, and clarification reply context.
-- Prevented future-intent phrases from being recorded as completed applications and prevented duplicate durable-rule proposals.
-- Scheduled work is marked complete only after Telegram confirms delivery; truncated job digests no longer claim that repeating `/jobs` reveals a missing next page.
+- 안전하지 않거나 domain 밖의 Playwright 이동을 거부하고 저장된 browser session에 소유자 전용 권한을 적용했습니다. 수집 결과가 0건으로 검증되면 이전 source 상태를 유지합니다.
+- 유효한 피드백 metadata, 모든 활성 선호 event, 혼합 피드백 요소와 확인 질문 답장 문맥을 보존합니다.
+- 미래 의도 표현을 지원 완료로 기록하지 않고 영구 규칙 제안이 중복되지 않게 했습니다.
+- Telegram 전송 확인 뒤에만 예약 작업을 완료 처리합니다. 잘린 채용 브리핑은 `/jobs` 반복 실행으로 빠진 다음 page를 볼 수 있다고 잘못 안내하지 않습니다.
 
 ## 1.10.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added an AI-first structured feedback interpreter for housing and job digest replies, using the linked Codex account first and the configured API key only for quota or authentication fallback.
-- Nuanced replies retain target, scope, strength, rationale, and separate positive/negative aspects, so tradeoffs are not collapsed into one binary signal.
-- `/feedback` shows the recent preferences the bot understood and currently uses.
-- Learned company, role, housing type, location, cost, and eligibility preferences now affect the order of matching future recommendations.
+- 주택·채용 요약에 대한 답장을 해석하는 AI 우선 구조화 피드백 해석기를 추가했습니다. 연결된 Codex 계정을 먼저 사용하고 할당량 또는 인증 오류가 있을 때만 설정된 API 키로 전환합니다.
+- 미묘한 답장에서도 대상, 범위, 강도, 근거와 긍정·부정 측면을 분리해 유지하므로 상충 관계를 단순한 이진 신호로 축소하지 않습니다.
+- `/feedback`에서 봇이 이해해 현재 적용 중인 최근 선호를 확인할 수 있습니다.
+- 학습된 회사, 직무, 주택 유형, 지역, 비용, 자격 선호를 이후 일치하는 추천의 정렬에 반영합니다.
 
-### Safety
+### 안전
 
-- The interpreter receives public digest labels only, has no browsing or file access, and treats message contents as untrusted data.
-- Ambiguous or low-confidence feedback asks a short clarification; permanent exclusions require high confidence, explicit future-oriented wording, and the existing approval button.
-- A deterministic parser remains available only as an outage fallback, and hard eligibility or company-verification gates always outrank learned preferences.
+- 해석기에는 공개 요약 라벨만 전달하며 탐색이나 파일 접근 권한을 주지 않고 메시지 내용은 신뢰할 수 없는 데이터로 취급합니다.
+- 모호하거나 신뢰도가 낮은 피드백에는 짧은 확인 질문을 보내며, 영구 제외는 높은 신뢰도, 명시적인 미래 지향 표현, 기존 승인 버튼을 모두 요구합니다.
+- 결정적 파서는 장애 시 대체 수단으로만 유지하며, 필수 자격 및 회사 검증 기준은 항상 학습된 선호보다 우선합니다.
 
 ## 1.9.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Digest feedback now resolves natural references anywhere in a reply, including `2번이`, `두 번째`, a company name, a source name, or a distinctive posting-title term.
-- Single-item messages accept context-only replies such as `이건 별로`; multi-item ambiguity produces one short clarification instead of guessing.
-- Expanded ordinary Korean preference language for positive, negative, applied, and durable-exclusion intent without routing through `/ask` or consuming an AI call.
+- 요약 피드백 답장의 어느 위치에서든 `2번이`, `두 번째`, 회사명, 출처명, 공고 제목의 특징적인 단어 같은 자연어 참조를 해석합니다.
+- 항목이 하나인 메시지는 `이건 별로`처럼 문맥에만 의존한 답장을 허용하고, 여러 항목에서 대상이 모호하면 추측 대신 짧은 확인 질문을 한 번 보냅니다.
+- `/ask`로 전달하거나 AI 호출을 사용하지 않고도 긍정, 부정, 지원 완료, 지속 제외 의도를 나타내는 일반적인 한국어 표현을 더 폭넓게 인식합니다.
 
-### Changed
+### 변경
 
-- Job and housing digest footers now invite normal conversational replies instead of presenting one rigid command grammar.
-- Negative feedback handling uses the shared parsed signal, keeping natural synonyms consistent across housing and jobs.
+- 채용·주택 요약의 바닥글은 경직된 명령 문법 대신 평범한 대화형 답장을 안내합니다.
+- 부정 피드백 처리는 공통 파싱 신호를 사용해 주택과 채용에서 자연어 동의어를 일관되게 다룹니다.
 
 ## 1.8.1 - 2026-07-20
 
-### Fixed
+### 수정
 
-- Unhandled numbered messages now explain that Telegram's actual reply gesture is required instead of returning the generic help fallback.
-- Replies connected to a job digest but containing an unknown action now show concrete supported examples.
-- Telegram routing logs retain only message IDs, reply IDs, item numbers, and the handling module so reply failures can be diagnosed without logging message text.
+- 처리할 수 없는 번호 메시지에는 일반 도움말을 대신 보여 주지 않고 Telegram의 실제 답장 기능을 사용해야 한다고 안내합니다.
+- 채용 요약에 연결됐지만 알 수 없는 행동을 담은 답장에는 지원되는 구체적인 예시를 보여 줍니다.
+- Telegram 라우팅 로그에는 메시지 ID, 답장 ID, 항목 번호, 처리 모듈만 남겨 메시지 본문을 기록하지 않고도 답장 실패를 진단할 수 있습니다.
 
 ## 1.8.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a durable SQLite-backed Telegram outbox with retry scheduling, delivery deduplication, delayed reply context, and a dedicated recovery worker.
-- Added natural feedback undo. `방금 거 취소` reverts the latest feedback, while a numbered reply such as `1번 관심없음 취소` targets one digest item and restores its prior application state.
-- Applying to a housing notice now extracts its official result date and time and proposes a global reminder. Exact job interview or result times embedded in a posting use the same flow.
-- Housing follow-up reminders resolve the official result link dynamically at delivery time for supported official sources.
+- 재시도 예약, 전송 중복 억제, 지연된 답장 문맥, 전용 복구 작업자를 갖춘 SQLite 기반 영속 Telegram 발신함을 추가했습니다.
+- 자연어 피드백 취소를 추가했습니다. `방금 거 취소`는 최근 피드백을 되돌리고, `1번 관심없음 취소` 같은 번호 답장은 특정 요약 항목을 대상으로 이전 지원 상태를 복원합니다.
+- 주택 공고에 지원하면 공식 결과 발표 일시를 추출해 공통 알림 생성을 제안합니다. 채용 공고에 정확한 면접 또는 결과 일시가 포함된 경우에도 같은 흐름을 사용합니다.
+- 지원되는 공식 출처의 주택 후속 알림은 전송 시점에 공식 결과 링크를 동적으로 확인합니다.
 
-### Changed
+### 변경
 
-- The Telegram client now disables network-family autoselection in code and prefers IPv4, so manual Node invocations retain the production connectivity workaround.
-- Daily housing/job digests, reminder delivery, and housing-result prompts use stable delivery keys where duplicate suppression is required.
-- Undoing an application also cancels any still-pending or approved follow-up reminder created by that action.
-- `/ask` operational snapshots and diagnostics now expose Telegram outbox health and the dedicated outbox service.
+- Telegram 클라이언트는 코드에서 네트워크 주소군 자동 선택을 비활성화하고 IPv4를 우선하므로, Node를 수동 실행해도 운영 환경의 연결 우회 설정이 유지됩니다.
+- 일일 주택·채용 요약, 알림 전송, 주택 결과 확인 메시지는 중복 억제가 필요한 곳에서 안정적인 전송 키를 사용합니다.
+- 지원을 취소하면 해당 행동으로 생성한 대기 또는 승인 상태의 후속 알림도 취소합니다.
+- `/ask` 운영 스냅샷과 진단에서 Telegram 발신함 상태와 전용 발신함 서비스를 확인할 수 있습니다.
 
 ## 1.7.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a shared feedback event store for housing and job recommendations, including positive, negative, applied, and ignored signals with bounded item metadata.
-- Natural replies such as `2번 별로야` now hide only that item, while `2번 이 회사는 앞으로 빼` creates a durable company-exclusion proposal.
-- Durable preference changes require one explicit `적용` or `취소` confirmation and retain their decision history.
+- 제한된 항목 메타데이터와 함께 긍정, 부정, 지원, 무시 신호를 저장하는 주택·채용 추천 공통 피드백 이벤트 저장소를 추가했습니다.
+- `2번 별로야` 같은 자연어 답장은 해당 항목만 숨기고, `2번 이 회사는 앞으로 빼`는 지속적인 회사 제외 규칙을 제안합니다.
+- 지속되는 선호 변경은 명시적인 `적용` 또는 `취소` 확인을 한 번 요구하며 결정 이력을 보존합니다.
 
-### Changed
+### 변경
 
-- Housing and job digests no longer show a separate `관심없어` button for every item. Only the high-value apply button remains; ordinary feedback is sent as a reply.
-- Housing exclusion instructions are proposed first instead of being applied immediately. Approved housing keyword rules feed the existing collector and reviewer, and approved job company rules hide future postings from that company.
-- Explicit positive job feedback modestly promotes later postings from the same company without bypassing hard eligibility or verification gates.
-- `/ask` snapshots now include recent feedback and active cross-domain feedback rules.
+- 주택·채용 요약은 항목마다 별도의 `관심없어` 버튼을 표시하지 않습니다. 가치가 높은 지원 버튼만 남기고 일반 피드백은 답장으로 받습니다.
+- 주택 제외 지시는 즉시 적용하지 않고 먼저 제안합니다. 승인한 주택 키워드 규칙은 기존 수집기와 검토기에 반영하고, 승인한 채용 회사 규칙은 해당 회사의 이후 공고를 숨깁니다.
+- 명시적인 긍정 채용 피드백은 필수 자격이나 검증 기준을 우회하지 않는 범위에서 같은 회사의 이후 공고를 소폭 올립니다.
+- `/ask` 스냅샷에 최근 피드백과 활성화된 교차 도메인 피드백 규칙을 포함합니다.
 
 ## 1.6.0 - 2026-07-20
 
-### Added
+### 추가
 
-- `/ask` now resumes one persisted Codex app-server thread, so follow-up questions retain their conversation across Telegram messages and bot restarts.
-- Every `/ask` turn receives an authoritative `account/rateLimits/read` snapshot, allowing natural questions about remaining Codex usage without a separate model tool or Telegram command.
+- `/ask`가 영속된 하나의 Codex app-server 대화를 이어서 사용하므로 Telegram 메시지와 봇 재시작을 거쳐도 후속 질문의 대화 문맥이 유지됩니다.
+- 매 `/ask` 요청에 신뢰할 수 있는 `account/rateLimits/read` 스냅샷을 제공해 별도 모델 도구나 Telegram 명령 없이 남은 Codex 사용량을 자연어로 물을 수 있습니다.
 
-### Changed
+### 변경
 
-- `/ask` runs as a conversational Codex session with a per-thread and per-turn read-only sandbox, disabled command-network access, a sanitized process environment, and an approval policy that cannot authorize writes.
-- `/daemon` and natural operations questions keep the deterministic and bounded diagnostic paths. If app-server is unavailable, `/ask` falls back to the existing allowlisted diagnostic agent and API fallback policy.
+- `/ask`는 대화별·요청별 읽기 전용 샌드박스, 비활성화된 명령 네트워크 접근, 정리된 프로세스 환경, 쓰기를 승인할 수 없는 승인 정책을 갖춘 대화형 Codex 세션으로 실행됩니다.
+- `/daemon`과 자연어 운영 질문은 결정적이고 제한된 진단 경로를 유지합니다. app-server를 사용할 수 없으면 `/ask`는 기존 허용 목록 진단 에이전트와 API 대체 정책을 사용합니다.
 
 ## 1.5.2 - 2026-07-20
 
-### Fixed
+### 수정
 
-- Multi-term code diagnostics now rank matches across normalized file paths and nearby source context, preventing a useful implementation match from being discarded because every requested term was not on one line.
-- Added a bounded read-only Git history diagnostic and expanded recent deployment history so the agent can confirm exactly when an observed behavior was introduced instead of inferring solely from current code.
+- 여러 검색어를 사용하는 코드 진단은 정규화한 파일 경로와 인접한 소스 문맥을 함께 기준으로 일치 항목을 정렬합니다. 요청한 모든 단어가 한 줄에 없다는 이유로 유용한 구현 결과가 버려지는 문제를 막았습니다.
+- 제한된 읽기 전용 Git 이력 진단을 추가하고 최근 배포 이력 범위를 넓혀, 에이전트가 현재 코드만으로 추론하지 않고 관찰한 동작이 정확히 언제 도입됐는지 확인할 수 있습니다.
 
 ## 1.5.1 - 2026-07-20
 
-### Fixed
+### 수정
 
-- The read-only source-search diagnostic now uses a bounded built-in repository walker instead of depending on `rg` being installed on the production host.
-- Deployment diagnostics now include commit timestamps so the agent can correlate a scheduled run with the version that was actually available at that time.
+- 읽기 전용 소스 검색 진단은 운영 호스트에 `rg`가 설치돼 있다고 가정하지 않고 제한된 내장 저장소 탐색기를 사용합니다.
+- 배포 진단에 커밋 시각을 포함해 에이전트가 예약 실행과 당시 실제로 사용 가능했던 버전을 연결할 수 있습니다.
 
 ## 1.5.0 - 2026-07-20
 
-### Changed
+### 변경
 
-- Replaced snapshot-only answers for complex operations questions with a multi-round autonomous read-only investigation loop.
-- Failure and root-cause questions can now adaptively inspect allowlisted systemd state and journals, SQLite health and queues, server resources, deployment state, configuration presence, fixed-host connectivity, unit definitions, and bounded source searches before answering.
-- Short follow-up questions such as `왜 실패했지?` reuse the previous in-memory manager exchange or the replied-to bot message as investigation context.
+- 복잡한 운영 질문에 스냅샷만으로 답하던 방식을 여러 단계의 자율 읽기 전용 조사 반복으로 교체했습니다.
+- 실패와 근본 원인 질문에는 답하기 전에 허용 목록의 systemd 상태와 journal, SQLite 상태와 대기열, 서버 자원, 배포 상태, 설정 존재 여부, 고정 호스트 연결, 유닛 정의, 제한된 소스 검색을 상황에 맞게 조사할 수 있습니다.
+- `왜 실패했지?` 같은 짧은 후속 질문은 메모리에 남은 이전 관리자 대화나 답장 대상 봇 메시지를 조사 문맥으로 다시 사용합니다.
 
-### Security
+### 보안
 
-- Diagnostic actions are selected through a strict schema and mapped to fixed `execFile` argument lists; the model cannot supply commands, SQL, arbitrary units, or filesystem paths.
-- Investigations are capped at three adaptive rounds and eight tool calls, duplicate calls are skipped, and diagnostic output is length-bounded and secret-redacted before model use.
+- 진단 행동은 엄격한 스키마로 선택하고 고정된 `execFile` 인자 목록에 대응시킵니다. 모델은 명령, SQL, 임의의 유닛이나 파일 시스템 경로를 제공할 수 없습니다.
+- 조사는 최대 세 단계와 도구 호출 여덟 번으로 제한하고, 중복 호출을 건너뛰며, 진단 출력은 길이를 제한하고 비밀 정보를 가린 뒤 모델에 전달합니다.
 
 ## 1.4.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Added a read-only Life Daemon operations assistant to the existing Telegram bot through `/daemon`, `/ask`, and natural Korean questions.
-- The assistant can explain private job priorities, current recommendations, collection attempt/success times, next systemd timer runs, housing applications/results, reminders, Calendar health, and service state from a bounded snapshot.
-- Common priority, collection, and health questions use deterministic formatters; other questions use a tool-free structured Codex request with the existing authenticated-login and API fallback policy.
+- 기존 Telegram 봇에 `/daemon`, `/ask`, 자연어 한국어 질문으로 사용할 수 있는 읽기 전용 Life Daemon 운영 도우미를 추가했습니다.
+- 도우미는 제한된 스냅샷으로 비공개 채용 우선순위, 현재 추천, 수집 시도·성공 시각, 다음 systemd 타이머 실행, 주택 지원·결과, 알림, Calendar 상태와 서비스 상태를 설명할 수 있습니다.
+- 자주 묻는 우선순위, 수집, 상태 질문은 결정적 포맷터를 사용하고, 나머지 질문은 기존 인증 로그인 및 API 대체 정책을 따르는 도구 없는 구조화 Codex 요청을 사용합니다.
 
-### Security
+### 보안
 
-- Natural-language questions cannot execute shell commands or mutate databases. systemd access is limited in code to a fixed read-only unit allowlist, and secrets and raw environment data are excluded from the model snapshot.
+- 자연어 질문은 셸 명령을 실행하거나 데이터베이스를 변경할 수 없습니다. systemd 접근은 코드에 고정된 읽기 전용 유닛 허용 목록으로 제한하고, 비밀 정보와 원본 환경 데이터는 모델 스냅샷에서 제외합니다.
 
 ## 1.3.0 - 2026-07-20
 
-### Added
+### 추가
 
-- Due housing applications are checked hourly for official result announcements, with one-time Telegram buttons for recording the user's private outcome.
-- Application outcomes, cutoff score, supply count, reached priority, and private recommendation feedback are retained in the housing database and shown in `/housing_status`.
-- A private admin command records historical housing outcomes without committing personal data.
+- 결과 확인 시점이 된 주택 지원 건의 공식 결과 공고를 매시간 확인하고, 일회성 Telegram 버튼으로 사용자의 비공개 결과를 기록합니다.
+- 지원 결과, 컷 점수, 공급 수, 도달 순위, 비공개 추천 피드백을 주택 데이터베이스에 보존하고 `/housing_status`에 표시합니다.
+- 개인정보를 커밋하지 않고 과거 주택 결과를 기록하는 비공개 관리자 명령을 추가했습니다.
 
-### Changed
+### 변경
 
-- Housing recommendations now use past outcome feedback to prioritize larger supply and official evidence that allocation reached second or third priority, while keeping eligibility decisions independent.
-- SH result matching now requires enough distinctive announcement keywords to avoid associating an unrelated result notice.
+- 주택 추천은 자격 판단과 독립적으로 과거 결과 피드백을 사용해 공급 수가 많고 배정이 2·3순위까지 도달했다는 공식 근거가 있는 공고를 우선합니다.
+- 관계없는 결과 공고를 잘못 연결하지 않도록 SH 결과 일치 판정에 충분히 특징적인 공고 키워드를 요구합니다.
 
 ## 1.2.5 - 2026-07-20
 
-### Added
+### 추가
 
-- Housing and job digests now report new, changed, deactivated, and failed collection counts together with the last successful collection time.
-- Production service failures now send a rate-limited Telegram alert containing redacted status and recent log context.
+- 주택·채용 요약에 신규, 변경, 비활성, 수집 실패 건수와 최근 수집 성공 시각을 함께 표시합니다.
+- 운영 서비스가 실패하면 상태와 최근 로그 문맥에서 민감 정보를 가린 뒤 횟수 제한이 적용된 Telegram 경고를 보냅니다.
 
-### Changed
+### 변경
 
-- Weekday housing and job timers now catch up after server downtime instead of silently missing the scheduled run.
-- Runtime documentation now reflects Codex CLI authentication, current commands, operational telemetry, and failure handling.
+- 평일 주택·채용 타이머는 서버 중단 때문에 예약 실행을 놓쳤을 때 조용히 건너뛰지 않고 보충 실행합니다.
+- 실행 환경 문서에 Codex CLI 인증, 현재 명령, 운영 측정 정보, 실패 처리 방식을 반영했습니다.
 
-### Removed
+### 제거
 
-- Removed the unused legacy `src/state.mjs` database module.
+- 사용하지 않는 레거시 데이터베이스 모듈 `src/state.mjs`를 제거했습니다.
 
 ## 1.2.4 - 2026-07-19
 
-### Added
+### 추가
 
-- Added an interactive Wanted authorization command and automatic storage-state refresh after successful collection.
-- Expired Wanted sessions now produce an explicit reauthorization error for the Telegram digest.
+- 대화형 Wanted 인증 명령과 수집 성공 후 저장 상태 자동 갱신을 추가했습니다.
+- Wanted 세션이 만료되면 Telegram 요약에 명시적인 재인증 오류를 표시합니다.
 
 ## 1.2.3 - 2026-07-19
 
-### Changed
+### 변경
 
-- Restored signed-in JobPlanet company verification in the daily job pipeline using the configured account and private Playwright storage state.
+- 설정한 계정과 비공개 Playwright 저장 상태를 사용하는 로그인 기반 JobPlanet 회사 검증을 일일 채용 처리 과정에 복원했습니다.
 
 ## 1.2.2 - 2026-07-18
 
-### Fixed
+### 수정
 
-- Job discovery now uses query-specific Wanted and public JobKorea search pages instead of opening unrelated generic listings; Wanted remains gated behind an authorized user session.
-- JobKorea tracking parameters are removed before deduplication.
-- Automated JobPlanet login and scraping is removed from the daily pipeline; only manually supplied or separately licensed verification data is accepted.
-- Pull requests and main-branch pushes now run the full Node test and syntax-check suite in GitHub Actions.
+- 채용 탐색은 관계없는 일반 목록 대신 검색어별 Wanted 및 공개 JobKorea 검색 페이지를 사용합니다. Wanted는 인증된 사용자 세션이 있어야 접근합니다.
+- 중복 제거 전에 JobKorea 추적 매개변수를 제거합니다.
+- 일일 처리 과정에서 JobPlanet 자동 로그인과 스크래핑을 제거했습니다. 수동으로 제공하거나 별도 라이선스를 갖춘 검증 데이터만 허용합니다.
+- pull request와 main 브랜치 push 시 GitHub Actions에서 전체 Node 테스트와 문법 검사 모음을 실행합니다.
 
 ## 1.2.1 - 2026-07-18
 
-### Fixed
+### 수정
 
-- Production services now consistently disable Node's network-family autoselection, preserving the deployed connectivity workaround across Git pulls and systemd reinstalls.
+- 운영 서비스가 Node의 네트워크 주소군 자동 선택을 일관되게 비활성화해 Git pull과 systemd 재설치 후에도 배포된 연결 우회 설정을 유지합니다.
 
 ## 1.2.0 - 2026-07-16
 
-### Added
+### 추가
 
-- Optional bidirectional synchronization between approved reminders and a dedicated Google Calendar.
-- A one-time OAuth and installation flow that creates the private calendar and safely updates the mode-600 service environment without removing existing secrets.
-- Natural-language Korean reminder parsing with explicit clarification for missing dates or times.
-- Telegram `/calendar` status reporting and a one-off `calendar:sync` command.
+- 승인한 알림과 전용 Google Calendar 사이의 선택적 양방향 동기화를 추가했습니다.
+- 비공개 캘린더를 생성하고 기존 비밀 정보를 제거하지 않으면서 권한 모드 600의 서비스 환경을 안전하게 갱신하는 일회성 OAuth 및 설치 흐름을 추가했습니다.
+- 날짜나 시각이 빠졌을 때 명시적으로 확인하는 한국어 자연어 알림 해석을 추가했습니다.
+- Telegram `/calendar` 상태 조회와 일회성 `calendar:sync` 명령을 추가했습니다.
 
-### Fixed
+### 수정
 
-- Malformed reminder-model JSON now fails only the current Telegram request instead of crashing the bot process.
-- Calendar outages no longer delay due Telegram reminders, and concurrent reminder edits remain pending until Google has the same state.
-- Natural-language parsing uses a bounded, tool-free Structured Outputs request instead of a filesystem-capable agent process.
-- Calendar authorization now uses the least-privilege app-created-calendar scope and can be installed without exposing unrelated service secrets.
+- 알림 모델의 JSON 형식이 잘못돼도 봇 프로세스가 종료되지 않고 현재 Telegram 요청만 실패합니다.
+- Calendar 장애가 전송 시점이 된 Telegram 알림을 지연시키지 않으며, 동시에 수정된 알림은 Google과 상태가 같아질 때까지 대기 상태를 유지합니다.
+- 자연어 해석은 파일 시스템에 접근 가능한 에이전트 프로세스 대신 도구가 없고 범위가 제한된 Structured Outputs 요청을 사용합니다.
+- Calendar 인증은 앱이 만든 캘린더에만 접근하는 최소 권한 범위를 사용하며 관계없는 서비스 비밀을 노출하지 않고 설치할 수 있습니다.
 
 ## 1.1.3 - 2026-07-16
 
-### Fixed
+### 수정
 
-- Malformed Codex JSON now fails only the current review instead of crashing the entire review worker.
+- Codex JSON 형식이 잘못돼도 전체 검토 작업자가 종료되지 않고 현재 검토만 실패합니다.
 
 ## 1.1.2 - 2026-07-16
 
-### Changed
+### 변경
 
-- Single-user assessment output now keeps relevant exact profile values instead of replacing them with privacy placeholders.
+- 단일 사용자 평가 결과에서 관련된 정확한 프로필 값을 개인정보 대체 문구로 바꾸지 않고 유지합니다.
 
 ## 1.1.1 - 2026-07-16
 
-### Changed
+### 변경
 
-- Telegram now displays incomplete recommendation totals with an explicit `(추정)` label instead of hiding them.
+- Telegram은 불완전한 추천 총점을 숨기지 않고 명시적인 `(추정)` 라벨과 함께 표시합니다.
 
 ## 1.1.0 - 2026-07-16
 
-### Added
+### 추가
 
-- Eligibility-gated housing recommendation scoring with separate value, selection, and execution components.
-- Profile fingerprints that automatically invalidate and requeue reviews after private user data changes.
-- Review-policy versions and expiring worker claims so stale decisions are hidden and interrupted work is retried.
-- Full-range PDF evidence sampling, conservative official-title matching, and an OCR fallback for image PDFs.
-- Regression tests for scoring, profile changes, privacy redaction, attachment selection, and ambiguous search results.
+- 가치, 선정 가능성, 실행 가능성을 분리하고 자격 확인을 선행하는 주택 추천 점수 체계를 추가했습니다.
+- 비공개 사용자 데이터가 바뀌면 기존 검토를 자동으로 무효화하고 다시 대기열에 넣는 프로필 지문을 추가했습니다.
+- 오래된 결정을 숨기고 중단된 작업을 재시도할 수 있도록 검토 정책 버전과 만료되는 작업자 점유를 추가했습니다.
+- PDF 전체 범위의 근거 표본 추출, 보수적인 공식 제목 일치 판정, 이미지 PDF용 OCR 대체 경로를 추가했습니다.
+- 점수 계산, 프로필 변경, 개인정보 가림, 첨부 선택, 모호한 검색 결과에 대한 회귀 테스트를 추가했습니다.
 
-### Changed
+### 변경
 
-- Telegram digests hide numeric scores until eligibility and official evidence are complete.
-- The daily job enforces a hard 45-minute AI-worker deadline so collection failures or OCR stalls cannot suppress the digest.
-- MyHome pagination must return the advertised row count consistently before collection is marked complete.
-- Missing official documents and missing user facts are reported separately.
-- Stored AI review output removes exact private profile values.
+- Telegram 요약은 자격과 공식 근거 확인이 끝날 때까지 숫자 점수를 숨깁니다.
+- 수집 실패나 OCR 지연 때문에 요약이 발송되지 않는 일을 막도록 일일 작업의 AI 작업자 실행 시간을 최대 45분으로 제한합니다.
+- MyHome 페이지 조회가 공지된 전체 행 수를 일관되게 반환해야 수집 완료로 표시합니다.
+- 누락된 공식 문서와 누락된 사용자 정보를 분리해 보고합니다.
+- 저장하는 AI 검토 결과에서 정확한 비공개 프로필 값을 제거합니다.

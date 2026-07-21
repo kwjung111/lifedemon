@@ -9,26 +9,26 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - Telegram 단일 브리핑과 지원 상태 추적
 - 평일 09:00 오늘 일정·주택·채용 통합 브리핑과 필요할 때만 추가 조회
 - 사용자 제외 규칙 저장
-- 전역 리마인더 등록·승인·발송
+- 전역 알림 등록·승인·발송
 - 발표 시점의 공식 결과 링크 동적 탐색
 - 공개 채용 공고 수집, 검증된 기업 필터링, Telegram 브리핑
-- 한국어 자연어 리마인더와 전용 Google Calendar 양방향 동기화
+- 한국어 자연어 알림과 전용 Google Calendar 양방향 동기화
 - systemd 기반 상시 실행과 평일 스케줄링
 - SQLite 상태 일일 백업과 30일 보관
 - 형식 없는 Life Inbox 입력과 자연어 수정·취소
 
-향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
+향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈도 같은 런타임에 추가할 수 있습니다.
 
-## Requirements
+## 요구 사항
 
 - Node.js 22 이상
 - Playwright Chromium
-- Telegram bot token
-- 자연어 리마인더 및 Wanted 검색용 서버 Codex CLI 로그인
-- 선택 사항: Codex 사용량·인증 오류 시 사용할 API fallback key
+- Telegram 봇 토큰
+- 자연어 알림 및 Wanted 검색용 서버 Codex CLI 로그인
+- 선택 사항: Codex 사용량·인증 오류 시 사용할 API 대체 키
 - SQLite CLI (`sqlite3`, 운영 백업용)
 
-## Setup
+## 설치
 
 ```bash
 npm install
@@ -36,11 +36,11 @@ npx playwright install --with-deps chromium
 cp .env.example .env
 ```
 
-`.env`에 본인의 Telegram bot token, 허용할 개인 chat ID와 동일 사용자의
-`TELEGRAM_USER_ID`를 입력합니다. 봇은 이 사용자의 private chat만 처리합니다.
+`.env`에 본인의 Telegram 봇 토큰, 허용할 비공개 대화 ID와 동일 사용자의
+`TELEGRAM_USER_ID`를 입력합니다. 봇은 이 사용자의 비공개 대화만 처리합니다.
 `.env`, SQLite DB, 인증 키는 Git에 포함하지 마세요.
 
-## Run
+## 실행
 
 ```bash
 npm run bot
@@ -54,255 +54,167 @@ npm run jobs:daily
 npm run briefing
 ```
 
-## Morning briefing
+## 아침 브리핑
 
-The scheduled user-facing report is one weekday message at 09:00 KST. Housing
-collection and AI review prepare data at 06:30, and job collection, company
-verification, and filtering prepare data at 07:40. These preparation jobs store
-all results but do not send separate daily messages.
+사용자에게 보내는 정기 보고는 평일 09:00 KST 메시지 한 건입니다. 주택 수집과 AI 평가는 06:30, 채용 수집·기업 검증·필터링은 07:40에 데이터를 준비합니다. 준비 작업은 결과를 저장하지만 별도의 일일 메시지는 보내지 않습니다.
 
-The briefing includes every actionable event due today, application counts, and
-at most the top three housing and top three job recommendations. A domain whose
-top recommendations did not change is reduced to `변경 없음`. Every free-form
-Telegram message is interpreted once by one bounded structured AI router. The
-result includes route, domain, target, extracted fields, confidence, and any
-clarification; domain modules validate and execute that result without a second
-interpretation call or semantic phrase-regex fallback. Fixed slash commands and
-callback protocols remain deterministic.
-`/housing_status` remains the housing
-application-status view, while `/jobs` retains the detailed job recommendation view.
+브리핑에는 오늘 처리할 일정, 지원 건수, 주택·채용 추천 상위 세 건씩을 담습니다. 상위 추천이 바뀌지 않은 영역은 `변경 없음`으로 줄여 표시합니다. 모든 자유문장은 제한된 구조화 AI 해석기가 한 번만 해석합니다. 해석 결과에는 경로, 영역, 대상, 추출 필드, 신뢰도와 확인 질문이 포함됩니다. 각 도메인 모듈은 이를 다시 해석하지 않고 검증한 뒤 실행합니다. 고정 슬래시 명령과 콜백 규약은 AI 없이 결정적으로 처리합니다.
+
+`/housing_status`는 주택 지원 현황을, `/jobs`는 상세 채용 추천을 보여줍니다.
 
 ## Life Inbox
 
-Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. The global AI interpreter decides whether it is an Inbox item and extracts only structured, validated fields. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+일정, 할 일, 링크, 메모, 사진이나 문서를 명령어 없이 Telegram 봇에 보내면 됩니다. 전역 AI 해석기가 Inbox 항목인지 판단하고 검증 가능한 구조화 필드만 추출합니다. 봇은 저장한 내용, 최소한의 가정과 다음 행동을 한 메시지로 알려줍니다.
 
-The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md), the one-pass interpretation design at [docs/MESSAGE-INTERPRETATION.md](./docs/MESSAGE-INTERPRETATION.md), and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
+Inbox 일정은 저장만으로 정시 알림이 되지 않습니다. 확인 메시지에 `알림도 등록해`라고 답장하고 알림 제안을 승인해야 합니다. `/inbox`는 한 번에 여덟 개를 보여주며 목록에 `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, `더 보여줘`처럼 답장할 수 있습니다. 저장한 링크는 계속 열 수 있고 Telegram 첨부 파일도 다시 받을 수 있습니다. 평일 09:00 브리핑에는 오래되지 않은 다음 행동을 최대 세 개만 포함합니다.
 
-If the interpreter is unavailable or uncertain, the bot performs no mutation and asks for a retry or one concise clarification. It never silently switches to a keyword parser.
+Telegram 명령 메뉴에는 자주 쓰는 일곱 개만 노출합니다. 고급 명령도 계속 동작하며 `/help 자세히`에서 확인할 수 있습니다.
 
-## Recommendation visibility explanations
+- 사용자 안내: [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md)
+- 메시지 해석 설계: [docs/MESSAGE-INTERPRETATION.md](./docs/MESSAGE-INTERPRETATION.md)
+- 사용자 흐름 검증: [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md)
+- 남은 Inbox 정책 계획: [docs/LIFE-INBOX-PLAN.md](./docs/LIFE-INBOX-PLAN.md)
 
-Ask naturally why a posting is missing, for example `큐픽스 공고 왜 안 보여?` or `2026년 1차 청년 매입임대 왜 목록에서 빠졌어?`. The global interpreter extracts only the domain and identifying phrase. Code compares the current application, feedback, durable-rule, source, review, deadline, deduplication, and complete recommendation state before returning one reason. Similar names produce one numbered clarification, and an unknown posting never receives a guessed explanation. Explanation messages retain their item context, so an incorrect `지원했어` or `관심없어` action can be undone by replying to that message.
+해석기가 응답하지 않거나 확신하지 못하면 데이터를 바꾸지 않고 재시도 또는 짧은 확인 질문을 요청합니다. 키워드 파서로 몰래 전환해 추측하지 않습니다.
 
-## Low-friction feedback
+## 추천에서 빠진 이유 확인
 
-Housing and job digests keep only the primary `신청했어` or `지원했어` action
-button. Other feedback is sent by replying to the digest with the item number:
+`A회사 공고 왜 안 보여?`, `2026년 1차 청년 매입임대 왜 목록에서 빠졌어?`처럼 자연스럽게 물으면 됩니다. 전역 해석기는 영역과 공고를 식별할 짧은 표현만 추출합니다. 코드는 현재 지원 상태, 피드백, 영구 규칙, 수집 상태, 평가 결과, 마감일, 중복 여부와 전체 추천 목록을 비교해 근거가 있는 이유 하나를 반환합니다.
+
+비슷한 이름이 여러 개면 번호로 한 번 더 묻고, 모르는 공고에는 이유를 지어내지 않습니다. 설명 메시지에도 대상 문맥이 남으므로 잘못 기록한 `지원했어` 또는 `관심없어`는 해당 메시지에 답장해 취소할 수 있습니다.
+
+## 간편한 추천 피드백
+
+주택·채용 브리핑에는 핵심 행동인 `신청했어` 또는 `지원했어` 버튼만 둡니다. 다른 의견은 브리핑 메시지에 자연스럽게 답장합니다.
 
 ```text
 2번 별로야
 3번 괜찮네
 2번 이 회사는 앞으로 빼
 두 번째가 제일 나아 보이네
-위시켓은 좀 미묘한데
-콘텐츠브릿지는 지원해볼 만함
+A회사는 좀 미묘한데
+B회사는 지원해볼 만함
 ```
 
-The wording is conversational rather than command-only. The global interpreter
-resolves numbers, ordinals, company/source names, distinctive title terms, and
-single-item reply context semantically. It preserves the
-meaning, scope, strength, and separate positive/negative aspects of nuanced
-feedback. It runs directly from the reply without `/ask`. Only public digest
-labels are sent to the interpreter; private posting bodies and credentials are
-not included. Low-confidence or ambiguous interpretations produce one short
-clarification instead of a guessed mutation. If the interpreter is unavailable,
-the message is left unchanged and the user is asked to retry.
+전역 해석기는 번호, 서수, 회사·출처 이름, 제목의 특징적인 단어와 단일 항목 답장 문맥을 의미로 연결합니다. 의견의 대상, 강도, 긍정·부정 요소를 따로 보존하며 `/ask`를 거치지 않습니다. 해석기에는 공개된 브리핑 라벨만 전달하고 공고 전문, 개인 프로필과 인증정보는 보내지 않습니다. 신뢰도가 낮거나 대상이 모호하면 변경하지 않고 한 번 더 묻습니다.
 
-Item feedback is stored in the shared platform database. A negative reply hides
-that item but does not silently become a permanent preference. Wording that
-clearly requests a durable rule creates a single `적용`/`취소` confirmation.
-Approved company rules hide later job postings from the same normalized company,
-and approved housing keyword rules enter the existing housing collection and AI
-review instructions. Messages that receive no reply are not treated as negative
-feedback. Stored company, role, housing type, location, cost, and eligibility
-preferences adjust the ordering of matching later recommendations, while hard
-eligibility, role, and company-verification gates remain authoritative. Mixed
-feedback such as `회사는 좋은데 직무는 별로` stores both aspects independently
-and does not hide the current item. Send `/feedback` to inspect what the bot
-understood and is using.
-Send `피드백 규칙 보여줘` to review active durable rules and delete one with a
-reply such as `J2 규칙 삭제` or `H3 규칙 삭제`.
+항목 피드백은 공용 플랫폼 DB에 저장됩니다. 부정 답장은 해당 항목만 숨기며 자동으로 영구 규칙이 되지 않습니다. 앞으로도 적용할 규칙을 명확히 요청했을 때만 `적용`/`취소` 확인을 한 번 거칩니다. 승인한 회사 규칙은 같은 회사의 이후 채용 공고를 숨기고, 승인한 주택 키워드 규칙은 기존 주택 수집·평가 지침에 반영됩니다. 답장이 없는 항목은 부정 피드백으로 간주하지 않습니다.
 
-Feedback can be undone without another button. Send `방금 거 취소` to revert
-the latest active feedback, or reply to the original digest with text such as
-`1번 관심없음 취소`. The bot restores the item's previous application state;
-if the feedback created a durable exclusion rule, that linked rule is disabled
-as part of the same undo.
+회사, 직무, 주택 유형, 지역, 비용과 자격에 대한 피드백은 이후 추천 순서에 제한적으로 반영됩니다. 자격, 직무와 기업 검증 같은 필수 조건을 우회하지는 않습니다. `회사는 좋은데 직무는 별로`처럼 긍정과 부정이 섞인 의견은 요소를 따로 저장하고 현재 항목을 숨기지 않습니다.
 
-## Reliable Telegram delivery
+- `/feedback`: 봇이 이해해 반영 중인 최근 피드백 확인
+- `피드백 규칙 보여줘`: 활성 영구 규칙 확인
+- `J2 규칙 삭제`, `H3 규칙 삭제`: 규칙 삭제
+- `방금 거 취소`: 최근 활성 피드백 되돌리기
+- 원래 브리핑에 `1번 관심없음 취소`: 해당 항목 피드백 되돌리기
 
-Every outbound Telegram message is written to `platform.sqlite` before the API
-call. Network failures remain pending with exponential retry timing, and the
-independent `monitor-telegram-outbox.service` delivers them after connectivity
-recovers. A retry reuses the same outbox record, while scheduled digests and
-reminders also use stable delivery keys to avoid duplicate sends. Digest item
-context is retained with the outbox row, so numbered replies still work when a
-message was delivered later by the recovery worker.
+피드백을 되돌리면 이전 지원·추천 표시 상태를 복원합니다. 피드백으로 영구 제외 규칙이 만들어졌다면 연결된 규칙도 함께 비활성화합니다.
 
-Incoming Telegram updates are also journaled before handling. The polling offset
-advances only after successful processing (or an explicit three-attempt
-dead-letter decision), so a restart during AI interpretation does not silently
-discard a reply. Replayed feedback updates use stable source keys and do not add
-duplicate preference events.
+## 신뢰성 있는 Telegram 전송
 
-The client prefers IPv4 and disables Node network-family autoselection both in
-code and in systemd. Non-retryable Telegram request errors remain visible as
-failed outbox records for `/ask` diagnostics rather than looping forever.
+모든 발신 Telegram 메시지는 API를 호출하기 전에 `platform.sqlite`에 저장합니다. 네트워크 오류가 나면 지수형 재시도 일정에 따라 대기하고, 독립적인 `monitor-telegram-outbox.service`가 연결 복구 후 다시 보냅니다. 예약 브리핑과 알림은 안정적인 전송 키를 사용해 중복 가능성을 줄입니다. 발신함 행에 브리핑 항목 문맥도 보존하므로 복구 작업자가 늦게 전송한 메시지에도 번호로 답장할 수 있습니다.
 
-## Application follow-up reminders
+수신 Telegram 갱신도 처리 전에 기록합니다. 성공적으로 처리하거나 세 번 실패해 영구 실패로 결정한 뒤에만 폴링 위치를 전진시킵니다. 따라서 AI 해석 중 재시작돼도 답장이 조용히 사라지지 않습니다. 재처리된 피드백은 안정적인 출처 키를 사용해 같은 선호 이벤트가 중복 저장되는 것을 막습니다.
 
-When `신청했어` or `지원했어` is recorded, the bot scans the stored official
-notice text for an exact result, interview, or selection schedule. A discovered
-schedule is proposed through the global reminder approval flow. Housing notices
-with a known result date but no official time are explicitly proposed for 09:00
-KST instead of silently inventing a time. At delivery, housing reminders search
-the official source for the result page and fall back to the original notice
-when no safe match exists. Public job postings rarely contain a personalized
-interview schedule, so the job flow proposes a reminder only when both date and
-time are actually present.
+클라이언트는 IPv4를 우선하며 코드와 systemd에서 Node의 네트워크 주소군 자동 선택을 비활성화합니다. 재시도할 수 없는 Telegram 오류는 무한 반복하지 않고 `/ask`에서 확인할 수 있는 실패 발신함 행으로 남깁니다.
 
-## Life Daemon operations assistant
+## 지원 후속 알림
 
-The existing Telegram gateway includes a read-only operations assistant. Use
-`/daemon` for a concise overall health report, or `/ask <question>` for a
-persistent conversational Codex thread. The thread ID is stored in the shared
-platform database, so follow-up context survives Telegram messages and bot
-restarts. Each turn also receives the Codex app-server's authoritative account
-rate-limit snapshot; questions such as `/ask 지금 코덱스 얼마나 남았어?` work
-without a separate usage command. Common operations questions may also be sent
-without a command, such as `채용공고 우선순위가 어떻게 돼?` or
-`수집이 마지막으로 언제 돌았지?`.
+`신청했어` 또는 `지원했어`를 기록하면 저장된 공식 공고문에서 결과, 면접 또는 선정 일정을 찾습니다. 정확한 일정이 발견되면 전역 알림 승인 흐름으로 제안합니다.
 
-Natural operations questions are routed by the same global interpreter and then
-answered by an autonomous read-only investigation. The agent may adaptively inspect an allowlisted Life Daemon
-service or timer, bounded journal logs, SQLite integrity and queue state, server
-resources, deployment state, configuration presence, fixed upstream network
-connectivity, deployed unit definitions, and bounded source-code matches.
-Source investigations rank multi-term matches across nearby context and can
-inspect bounded Git history for the exact revision that introduced a setting or
-behavior, allowing an earlier scheduled run to be correlated with deployed code.
+주택 공고에 결과 날짜만 있고 공식 시각이 없으면 임의 시각으로 숨기지 않고 09:00 KST 추정 시각임을 표시해 제안합니다. 알림을 보낼 때는 공식 사이트에서 결과 페이지를 다시 찾고, 안전한 일치 항목이 없으면 원래 공고 링크를 사용합니다. 공개 채용 공고에는 개인 면접 일정이 거의 없으므로 날짜와 시각이 모두 있을 때만 채용 후속 알림을 제안합니다.
 
-The conversational thread uses read-only sandboxing at both thread and turn
-boundaries, disables command-network access, receives a minimal sanitized
-environment, and uses an approval policy that cannot authorize writes. It is
-explicitly prohibited from inspecting credentials or secret files. If the
-app-server is unavailable, `/ask` falls back to the existing bounded diagnostic
-agent and API fallback policy.
+## Life Daemon 운영 도우미
 
-Every fallback investigation uses strict structured actions, at most three adaptive
-rounds and eight tool calls. Tool implementations use fixed command argument
-lists: the model cannot supply a shell command, SQL statement, arbitrary unit,
-path, or host. Outputs are secret-redacted and bounded before the model sees
-them. The assistant can diagnose and recommend a next action, but mutating
-operational actions remain intentionally unavailable.
+기존 Telegram 게이트웨이에는 읽기 전용 운영 도우미가 포함됩니다.
 
-## Housing result feedback
+- `/daemon`: 전체 상태 요약
+- `/ask <질문>`: 대화가 이어지는 Codex 운영 질문
 
-`housing-result-check.timer` checks due applications hourly on weekdays. When an
-official result announcement is found, Telegram asks the user to confirm the
-private document-screening outcome once. Replying with the housing name, cutoff,
-supply count, and how far allocation reached enriches later recommendations.
-Past outcomes never override hard eligibility rules; they only influence the
-ordering of otherwise relevant candidates. Personal outcomes and preferences
-remain in the ignored production SQLite database and are not committed.
+대화 ID는 공용 플랫폼 DB에 저장되므로 Telegram 메시지와 봇 재시작 사이에도 문맥이 이어집니다. 각 요청에는 Codex app-server의 실제 계정 사용량 정보도 전달됩니다. `/ask 지금 코덱스 얼마나 남았어?`, `채용공고 우선순위가 어떻게 돼?`, `수집이 마지막으로 언제 돌았지?`처럼 질문할 수 있습니다.
 
-If a public result contains no stable personal identifier, the bot deliberately
-does not guess whether the user was selected. The official-announcement check is
-automatic, while that private outcome requires one Telegram tap.
+자연어 운영 질문도 전역 해석기를 거쳐 읽기 전용 조사로 연결됩니다. 에이전트는 허용된 Life Daemon 서비스·타이머, 제한된 journal 로그, SQLite 무결성과 대기열 상태, 서버 자원, 배포 상태, 설정 존재 여부, 고정된 외부 연결, 배포된 유닛 정의와 제한된 소스 코드 검색을 확인할 수 있습니다. 소스 조사는 여러 검색어와 인접 문맥을 함께 평가하며, 제한된 Git 이력으로 특정 설정이나 동작이 들어온 시점을 확인할 수 있습니다.
 
-상시 Telegram gateway, durable outbox worker, reminder worker와 평일 수집 작업은 `systemd/`의 unit으로 운영합니다. 평일 수집 timer는 토·일요일에 누락된 실행을 보충하지 않습니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 로그 일부를 민감정보 마스킹 후 Telegram으로 알립니다. `monitor-backup.timer`는 매일 03:30 KST에 세 SQLite DB를 일관된 스냅샷으로 백업하고 기본 30일간 보관합니다.
+대화는 대화 전체와 개별 요청 양쪽에서 읽기 전용 샌드박스를 사용하고 명령 네트워크를 비활성화하며, 최소한의 정제된 환경만 전달합니다. 승인 정책으로 쓰기 권한을 얻을 수 없고 인증정보나 비밀 파일을 읽지 않도록 명시적으로 제한합니다. app-server가 동작하지 않으면 `/ask`는 기존 허용 목록 기반 진단 에이전트와 API 대체 정책을 사용합니다.
 
-주거·채용 일일 리포트에는 소스별 원본 수집 건수, 신규·변경·종료·오류 건수와 마지막 정상 수집 시각이 포함됩니다.
+대체 조사는 최대 세 단계, 여덟 번의 도구 호출로 제한됩니다. 모델은 셸 명령, SQL, 임의의 유닛·경로·호스트를 직접 지정할 수 없습니다. 도구 출력은 길이를 제한하고 비밀정보를 제거한 뒤 모델에 전달합니다. 운영 도우미는 원인을 진단하고 다음 행동을 제안할 수 있지만 시스템을 변경할 수는 없습니다.
 
-## Job notices
+## 주택 지원 결과 피드백
 
-The job pipeline has two separate stages. `jobs:collect` accesses only public listing and detail pages from Remember, Wanted, and JobKorea, then normalizes and deduplicates postings. It does not use the private profile or make suitability decisions.
+`housing-result-check.timer`는 평일에 발표일이 된 지원 건의 공식 결과 공고를 매시간 확인합니다. 공식 발표를 찾으면 Telegram에서 개인 서류심사 결과를 한 번 확인합니다. 주택명, 컷라인, 공급호수와 몇 순위까지 내려갔는지를 답하면 이후 추천에 반영합니다.
 
-`jobs:filter` loads the private `JOB_USER_PROFILE_FILE`, applies deterministic company gates first, and asks AI to evaluate the remaining job descriptions against the natural-language profile. The profile and company verification import stay under the ignored `data/` directory or an external mode-600 production path. `/jobs` shows the latest detailed view in Telegram; the scheduled job stores its results for the combined morning briefing.
+과거 결과는 필수 자격을 바꾸지 않으며, 조건을 충족한 후보의 순서에만 영향을 줍니다. 개인 결과와 선호는 Git에서 제외된 운영 SQLite DB에만 남습니다. 공개 결과에 개인을 식별할 안정적인 정보가 없으면 선정 여부를 추측하지 않습니다.
 
-JobKorea discovery uses its public search and public detail pages without login credentials. Wanted blocks direct server-side Playwright search even with a renewable user session, so the production collector runs non-interactive `codex --search exec` instead. It searches only official `wanted.co.kr/wd/<id>` pages for DevOps, DevSecOps, SRE, platform, cloud, and infrastructure roles, requires an active-posting signal, canonicalizes the Wanted ID, and then feeds verified results into the same deduplication and filtering pipeline. The Codex child process receives a minimal environment, a read-only sandbox, no repository workspace, and a strict JSON output schema.
+상시 Telegram gateway, durable outbox worker, reminder worker와 평일 수집 작업은 `systemd/` unit으로 운영합니다. 평일 수집 timer는 실행 시각에 서버가 내려가 있으면 그 실행을 보충하지 않습니다. 서비스가 실패하면 `monitor-failure-notify@.service`가 최근 상태와 일부 로그의 민감정보를 가린 뒤 Telegram으로 알립니다. `monitor-backup.timer`는 매일 03:30 KST에 세 SQLite DB를 각각 백업하고 기본 30일간 보관합니다.
 
-The first search attempt uses the server's ChatGPT-linked Codex login. When its error specifically indicates quota or authentication exhaustion, an API-backed retry is allowed only when `CODEX_API_FALLBACK_ENABLED=true` and `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) is configured. `CODEX_API_DAILY_CALL_LIMIT` caps fallback calls across processes, and the first switch each day queues a Telegram cost notice. Gmail remains a supplementary discovery channel: URLs found under the read-only `BOT/Wanted` label are passed to the same live verification prompt, but missing or delayed email never blocks web discovery.
+주택·채용 일일 상태에는 소스별 원본 수집 건수, 신규·변경·종료·오류 건수와 마지막 정상 수집 시각이 포함됩니다.
 
-The production `jobs-daily.timer` prepares data at 07:40 KST, and `morning-briefing.timer` sends the combined message at 09:00 KST. Install them only after the private profile, company-verification import, Codex login, and optional Gmail credentials have been placed outside Git.
+## 채용 공고
 
-JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOBPLANET_PASSWORD`) and an ignored Playwright storage-state file (`JOBPLANET_STORAGE_STATE_FILE`). The daily pipeline refreshes active-company ratings and employee counts before filtering. Never commit credentials, cookies, or storage-state files. Missing verification, rating below the configured threshold, or employee count below the configured threshold is an automatic exclusion.
+채용 파이프라인은 두 단계로 나뉩니다.
 
-운영 환경에서는 `systemd/`의 서비스와 타이머 예시를 환경에 맞게 수정해서 사용합니다.
+1. `jobs:collect`는 Remember, Wanted와 JobKorea의 공개 목록·상세 페이지만 읽어 공고를 정규화하고 중복을 제거합니다. 개인 프로필을 읽거나 적합성을 판단하지 않습니다.
+2. `jobs:filter`는 비공개 `JOB_USER_PROFILE_FILE`을 읽어 기계적인 기업 조건을 먼저 적용하고, 남은 채용 설명을 자연어 프로필과 비교하도록 AI에 요청합니다.
 
-## Structure
+프로필과 기업 검증 파일은 Git에서 제외된 `data/` 또는 운영 환경의 권한 모드 600 경로에 둡니다. `/jobs`는 Telegram에서 최신 상세 추천을 보여주며, 예약 작업은 통합 아침 브리핑에 사용할 결과를 저장합니다.
 
-- `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
-- `src/apps/briefing/`: The bounded weekday cross-domain briefing and recommendation-list execution
-- `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
-- `src/apps/manager/`: Read-only operational questions and Codex conversation
-- `src/apps/manual/`: One-screen Telegram manual and detailed command guide
-- `src/modules.mjs`: Enabled modules and the curated seven-command Telegram menu
+JobKorea는 로그인 없이 공개 검색·상세 페이지를 사용합니다. Wanted는 서버 Playwright 직접 검색을 차단하므로 운영 수집기는 비대화형 `codex --search exec`를 실행합니다. 검색 범위는 공식 `wanted.co.kr/wd/<id>` 페이지와 DevOps, DevSecOps, SRE, 플랫폼, 클라우드, 인프라 직무로 제한합니다. 활성 공고 근거를 요구하고 Wanted ID를 정규화한 뒤 같은 중복 제거·필터링 파이프라인으로 전달합니다. Codex 자식 프로세스에는 최소 환경, 읽기 전용 샌드박스, 엄격한 JSON 출력 스키마만 제공합니다.
 
-- `src/core/`: one-pass AI message interpretation, Telegram routing, and platform state
-- `src/apps/housing/`: 주거 도메인 명령과 공식 링크 탐색
-- `src/apps/jobs/`: 채용 공고 수집, 기업 검증, 사용자 적합도 필터링
-- `src/apps/reminders/`: 전역 이벤트·리마인더
-- `src/collect.mjs`: 주거 공고 수집
+첫 검색은 서버의 ChatGPT 연동 Codex 로그인을 사용합니다. 사용량 또는 인증 한도 오류가 발생했을 때만 `CODEX_API_FALLBACK_ENABLED=true`이고 `CODEX_API_FALLBACK_KEY` 또는 `OPENAI_API_KEY`가 설정된 경우 API로 한 번 더 시도합니다. `CODEX_API_DAILY_CALL_LIMIT`은 프로세스 전체의 일일 대체 호출 횟수를 제한하며, 그날 처음 전환할 때 Telegram 비용 알림을 대기열에 넣습니다. Gmail은 보조 발견 경로입니다. 읽기 전용 `BOT/Wanted` 라벨에서 찾은 URL을 같은 실시간 검증 과정에 넣지만 Gmail 지연이나 누락이 웹 검색을 막지는 않습니다.
+
+운영 `jobs-daily.timer`는 07:40 KST에 데이터를 준비하고 `morning-briefing.timer`는 09:00 KST에 통합 메시지를 보냅니다. 비공개 프로필, 기업 검증 데이터, Codex 로그인과 선택적인 Gmail 인증정보를 Git 밖에 준비한 뒤 설치하세요.
+
+JobPlanet 기업 검증은 설정한 계정(`JOBPLANET_ID`, `JOBPLANET_PASSWORD`)과 Git에서 제외된 Playwright 저장 상태 파일(`JOBPLANET_STORAGE_STATE_FILE`)을 사용합니다. 일일 파이프라인은 필터링 전에 활성 기업의 평점과 인원수를 갱신합니다. 인증정보, 쿠키와 저장 상태 파일을 커밋하지 마세요. 검증 자료가 없거나 평점·인원수가 설정 기준보다 낮으면 자동 제외합니다.
+
+운영 환경에서는 `systemd/`의 서비스와 타이머 예시를 환경에 맞게 수정해 사용합니다.
+
+## 구조
+
+- `src/core/`: 1회 AI 메시지 해석, Telegram 분기와 플랫폼 상태
+- `src/apps/inbox/`: 형식 없는 생활 항목, 페이지 이동, 첨부 파일 재전송과 자연어 수정
+- `src/apps/briefing/`: 평일 영역 통합 브리핑과 추천 목록 실행
+- `src/apps/feedback/`: 추천 피드백과 영구 규칙 제안
+- `src/apps/manager/`: 읽기 전용 운영 질문과 Codex 대화
+- `src/apps/manual/`: 한 화면 Telegram 사용법과 상세 명령 안내
+- `src/apps/housing/`: 주택 명령과 공식 링크 탐색
+- `src/apps/jobs/`: 채용 공고 수집, 기업 검증과 사용자 적합도 필터링
+- `src/apps/reminders/`: 전역 이벤트와 알림
+- `src/modules.mjs`: 활성 모듈과 일곱 개의 기본 Telegram 메뉴
+- `src/collect.mjs`: 주택 공고 수집
 - `src/bot.mjs`: 활성 모듈을 조립하는 진입점
 
 자세한 설계는 [ARCHITECTURE.md](./ARCHITECTURE.md)를 참고하세요.
 
-## Development conventions
+## 개발 규칙
 
-버전은 Semantic Versioning을 사용하고, 커밋 메시지는 Conventional Commits 형식을 따릅니다. 자세한 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 참고하세요.
+버전은 Semantic Versioning을 사용하고 커밋 메시지는 Conventional Commits 형식을 따릅니다. 자세한 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 참고하세요.
 
-## Security
+## 보안
 
-- 봇은 설정된 `TELEGRAM_CHAT_ID`의 private chat에서 정확히 일치하는 `TELEGRAM_USER_ID`의 메시지만 처리합니다.
-- Telegram token, API key, SSH key, `auth.json`, 운영 DB를 커밋하지 마세요.
+- 봇은 설정된 `TELEGRAM_CHAT_ID`의 비공개 대화에서 정확히 일치하는 `TELEGRAM_USER_ID`의 메시지만 처리합니다.
+- Telegram 토큰, API 키, SSH 키, `auth.json`, 운영 DB를 커밋하지 마세요.
 - 사용자 입력은 지원하는 구조화 규칙으로만 저장하며 서버 명령으로 실행하지 않습니다.
 
-## Natural-language reminders
+## 자연어 알림
 
-The Telegram gateway accepts natural Korean reminder requests such as
-`/remind 내일 오후 3시에 병원 예약 알려줘`. The same sandboxed, tool-free
-global interpreter used for other free-form messages converts relative dates in the
-`Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
-times cause a clarification question instead of a guessed schedule. The parsed
-time and title are shown with the existing approval buttons before registration.
-The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
-AI-free fallback. Natural-language parsing uses the server's ChatGPT-linked Codex
-login first and only uses `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) when a
-valid fallback key is configured and the login reports a quota or authentication
-failure. The interpreter has no web search and runs in a temporary read-only sandbox.
+Telegram 게이트웨이는 `/remind 내일 오후 3시에 병원 예약 알려줘` 같은 한국어 요청을 받습니다. 다른 자유문장과 같은 샌드박스 기반의 도구 없는 전역 해석기가 `Asia/Seoul` 기준의 상대 날짜를 구조화된 알림으로 변환합니다. 날짜나 시각이 없거나 모호하면 추측하지 않고 확인 질문을 합니다. 등록 전에는 기존 승인 버튼과 함께 해석한 시각과 제목을 보여줍니다.
 
-## Google Calendar sync
+빠르고 AI가 필요 없는 형식인 `/remind YYYY-MM-DD HH:MM title`도 계속 사용할 수 있습니다. 자연어 해석은 서버의 ChatGPT 연동 Codex 로그인을 먼저 사용하며, 로그인에서 사용량·인증 오류가 발생하고 유효한 `CODEX_API_FALLBACK_KEY` 또는 `OPENAI_API_KEY`가 있을 때만 API 대체 경로를 사용합니다. 해석기는 웹 검색을 하지 않으며 임시 읽기 전용 샌드박스에서 실행됩니다.
 
-The global reminder bot can optionally synchronize with a dedicated Google
-Calendar in both directions. A local approved reminder becomes a 30-minute
-calendar event at the reminder time. Creating, editing, or deleting an event in
-that calendar creates, updates, or cancels the matching local reminder.
+## Google Calendar 동기화
 
-Create a Google OAuth **Desktop app** client with the Calendar scope
-`https://www.googleapis.com/auth/calendar.app.created`. This limits the token to
-secondary calendars created by this app instead of every calendar the account
-can access. For an external consent app, publish
-it to Production before final authorization; refresh tokens from Testing mode
-expire after seven days. An Internal Google Workspace app is also suitable.
-Obtain a refresh token for the separate Google account, then set the
-`GOOGLE_CALENDAR_*` values shown in `telegram.env.example`. Do not commit OAuth
-credentials. The one-time authorization helper accepts a private env file that
-contains `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`, opens a
-loopback OAuth callback and creates the dedicated `Life Daemon` calendar. Run
-this helper on the desktop where the browser opens, not on the remote server:
+전역 알림 봇은 선택적으로 전용 Google Calendar와 양방향 동기화할 수 있습니다. 승인한 로컬 알림은 해당 시각의 30분 일정이 됩니다. 캘린더에서 일정을 만들거나 수정·삭제하면 연결된 로컬 알림도 생성·수정·취소됩니다.
+
+Google OAuth의 **Desktop app** 클라이언트를 만들고 캘린더 권한 범위를 `https://www.googleapis.com/auth/calendar.app.created`로 설정합니다. 이 범위는 계정의 모든 캘린더가 아니라 앱이 만든 보조 캘린더에만 접근하도록 제한합니다. 외부 동의 앱은 최종 인증 전에 **Production**으로 게시하세요. **Testing** 상태의 갱신 토큰은 7일 뒤 만료됩니다. 내부 Google Workspace 앱도 사용할 수 있습니다.
+
+별도 Google 계정에서 갱신 토큰을 발급받고 `telegram.env.example`의 `GOOGLE_CALENDAR_*` 값을 설정합니다. OAuth 인증정보는 커밋하지 마세요. 일회성 인증 도구는 `GOOGLE_OAUTH_CLIENT_ID`와 `GOOGLE_OAUTH_CLIENT_SECRET`이 담긴 비공개 환경 파일을 받아 루프백 OAuth 콜백을 열고 전용 `Life Daemon` 캘린더를 만듭니다. 이 도구는 원격 서버가 아니라 브라우저가 열리는 데스크톱에서 실행합니다.
 
 ```sh
 node --env-file=/path/to/oauth-client.env \
   src/admin/authorize-google-calendar.mjs data/google-calendar.env
 ```
 
-Open the URL written next to the output file and approve access with the
-calendar owner account. Reusing the same output file reuses the existing
-calendar instead of creating a duplicate. Copy the generated file to a private
-temporary path on the server, then merge only its Google settings into the
-service environment (existing Telegram, MyHome, and profile values are
-preserved):
+출력 파일 옆에 표시된 URL을 열고 캘린더 소유 계정으로 접근을 승인합니다. 같은 출력 파일을 다시 사용하면 캘린더를 중복 생성하지 않고 기존 캘린더를 재사용합니다. 생성한 파일을 서버의 비공개 임시 경로로 복사한 뒤 Google 설정만 서비스 환경에 병합합니다. 기존 Telegram, MyHome과 프로필 값은 보존됩니다.
 
 ```sh
 node src/admin/install-google-calendar-env.mjs \
@@ -310,27 +222,19 @@ node src/admin/install-google-calendar-env.mjs \
   /home/ubuntu/.config/monitor-platform/telegram.env
 ```
 
-Both helpers force their output to mode `0600`. Remove the temporary upload,
-restart `monitor-telegram-bot.service` and `monitor-reminder.service`, then use
-`/calendar_status` in Telegram to check the last synchronization state. The old
-`/calendar` alias remains supported. A one-off
-synchronization can be run with `npm run calendar:sync` on the server.
+두 도구 모두 출력 파일 권한을 `0600`으로 강제합니다. 임시 업로드를 삭제하고 `monitor-telegram-bot.service`와 `monitor-reminder.service`를 재시작한 뒤 Telegram의 `/calendar_status`에서 마지막 동기화 상태를 확인하세요. 예전 `/calendar` 별칭도 계속 지원합니다. 서버에서 `npm run calendar:sync`로 일회성 동기화를 실행할 수도 있습니다.
 
-The installer refuses to replace an existing calendar ID. If the dedicated
-calendar was deleted, migrate or clear its existing reminder mappings before
-installing credentials for a replacement calendar; otherwise future reminders
-would remain attached to the deleted calendar.
+설치 도구는 기존 캘린더 ID를 다른 값으로 교체하지 않습니다. 전용 캘린더를 삭제했다면 새 인증정보를 설치하기 전에 기존 알림 매핑을 이전하거나 제거해야 합니다. 그렇지 않으면 이후 알림이 삭제된 캘린더에 계속 연결됩니다.
 
-If `GOOGLE_CALENDAR_ENABLED` is false or any credential is missing, the existing
-reminder bot continues without Calendar access.
+`GOOGLE_CALENDAR_ENABLED`가 `false`이거나 인증정보가 하나라도 없으면 기존 알림 봇은 캘린더 없이 계속 동작합니다.
 
-## Housing decision engine
+## 주택 판단 엔진
 
-- Keep the private profile outside Git and point `HOUSING_USER_PROFILE_FILE` at the mode-600 JSON file.
-- A confirmed recommendation is shown after eligibility and official evidence are complete. Otherwise the digest keeps the component total with an explicit `(추정)` label and lists the missing conditions and evidence gaps.
-- Profile changes automatically invalidate active reviews. The private profile file stays outside Git, while this single-user bot may include exact values in its stored assessment and Telegram explanation.
-- PDF extraction uses Poppler. Image-only PDFs can use `pdftoppm`, `pdfinfo`, and Tesseract with `kor+eng` language data when installed.
+- 비공개 프로필은 Git 밖에 두고 권한 모드 600의 JSON 파일을 `HOUSING_USER_PROFILE_FILE`로 지정합니다.
+- 자격과 공식 근거가 모두 확인된 뒤 확정 추천을 표시합니다. 불확실하면 구성요소 합계에 `(추정)`을 붙이고 확인하지 못한 조건과 근거를 함께 보여줍니다.
+- 프로필이 바뀌면 활성 평가를 자동으로 무효화합니다. 단일 사용자 봇이므로 저장된 평가와 Telegram 설명에는 실제 프로필 값이 포함될 수 있습니다.
+- PDF 추출에는 Poppler를 사용합니다. 이미지 PDF는 설치된 경우 `pdftoppm`, `pdfinfo`, Tesseract와 `kor+eng` 언어 데이터를 사용할 수 있습니다.
 
-## License
+## 라이선스
 
 MIT

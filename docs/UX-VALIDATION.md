@@ -1,40 +1,40 @@
-# Telegram UX validation
+# Telegram 사용자 경험 검증
 
-Date: 2026-07-21
+검증일: 2026-07-21
 
-Three independent read-only reviews covered code integrity, realistic single-user conversations, and menu/document discoverability. The initial Life Inbox scored poorly for later management because lists had no reply targets, old events occupied the briefing, attachments could not be retrieved, and fourteen visible commands obscured the command-free workflow.
+코드 무결성, 실제 단일 사용자 대화와 메뉴·문서 발견 가능성을 세 번의 독립적인 읽기 전용 검토로 확인했습니다. 초기 Life Inbox는 나중에 항목을 관리하기 어려웠습니다. 목록에 답장 대상이 없었고, 지난 일정이 브리핑을 차지했으며, 첨부 파일을 다시 받을 수 없었고, 메뉴에 명령 열네 개가 보여 명령어 없는 흐름을 가렸습니다.
 
-## Validated user journeys
+## 검증한 사용자 흐름
 
-| Journey | Expected interaction | Automated evidence |
+| 사용자 흐름 | 기대하는 상호작용 | 자동화 근거 |
 | --- | --- | --- |
-| First save | One user message and one conclusion-first confirmation | `test/inbox.test.mjs` |
-| Correct, complete, or cancel now | Reply to the saved-item bubble once | `test/inbox.test.mjs` |
-| Manage days later | `/inbox`, then one numbered reply to the list | `test/inbox.test.mjs` |
-| More than eight items | Reply `더 보여줘`; receive the next page | `test/inbox.test.mjs` |
-| Re-open a link or attachment | Click the list link or reply `N번 보여줘` | `test/inbox.test.mjs` |
-| Inbox event versus timed reminder | Confirmation states that no timed reminder exists; reply `알림도 등록해` to propose one | module tests and manual review |
-| Morning briefing | At most three non-stale Inbox actions; reply context retained without extra Inbox buttons | `test/morning-briefing.test.mjs` |
-| Ambiguous target | No mutation; one short request for an item number | `test/inbox.test.mjs` |
-| Impossible date | No JavaScript rollover; item is not saved | `test/inbox.test.mjs` |
-| First-time discovery | Seven visible commands and one short `/help` message | `test/manual.test.mjs` |
-| Free-form intent and target routing | One global AI call resolves navigation, Inbox, reminder, feedback, tracking, and manager intent; uncertainty makes no mutation | `test/message-interpreter.test.mjs`, `test/bot-runtime.test.mjs` |
-| Missing recommendation explanation | Ask with a company/title; receive one evidence-backed reason, or one numbered clarification for ambiguity | `test/visibility.test.mjs` |
+| 처음 저장 | 사용자 메시지 한 건, 결론부터 말하는 확인 한 건 | `test/inbox.test.mjs` |
+| 바로 수정·완료·취소 | 저장 확인 말풍선에 한 번 답장 | `test/inbox.test.mjs` |
+| 며칠 뒤 관리 | `/inbox` 실행 후 목록에 번호로 한 번 답장 | `test/inbox.test.mjs` |
+| 항목이 여덟 개 초과 | `더 보여줘`로 답장해 다음 페이지 수신 | `test/inbox.test.mjs` |
+| 링크·첨부 파일 다시 열기 | 목록의 링크를 누르거나 `N번 보여줘`로 답장 | `test/inbox.test.mjs` |
+| Inbox 일정과 정시 알림 구분 | 확인 메시지에서 정시 알림이 없음을 명시하고 `알림도 등록해` 답장으로 제안 생성 | 모듈 테스트와 수동 검토 |
+| 아침 브리핑 | 오래되지 않은 Inbox 행동 최대 세 개, 추가 버튼 없이 답장 문맥 유지 | `test/morning-briefing.test.mjs` |
+| 대상이 모호함 | 변경하지 않고 항목 번호를 한 번만 요청 | `test/inbox.test.mjs` |
+| 불가능한 날짜 | JavaScript 날짜 rollover 없이 항목을 저장하지 않음 | `test/inbox.test.mjs` |
+| 첫 사용 발견 | 보이는 명령 일곱 개와 짧은 `/help` 메시지 한 건 | `test/manual.test.mjs` |
+| 자유문장 의도·대상 분기 | 전역 AI 호출 한 번으로 목록, Inbox, 알림, 피드백, 추적과 운영 질문을 구분하며 불확실하면 변경하지 않음 | `test/message-interpreter.test.mjs`, `test/bot-runtime.test.mjs` |
+| 추천 누락 이유 | 회사·제목으로 물으면 근거가 있는 이유 하나, 모호하면 번호 확인 한 번 | `test/visibility.test.mjs` |
 
-## Cognitive-load constraints
+## 인지 부담 제한
 
-- Saving does not require a command, form, or preliminary question.
-- The confirmation starts with the result, avoids repeating the title as the next action, and labels missing facts as `확인 안 된 점`.
-- The primary menu contains seven choices. Advanced commands remain available under `/help 자세히`.
-- Lists show eight items and three example replies, with no per-item buttons.
-- The morning message remains the only scheduled weekday briefing.
-- Reply context is included in the single global interpretation, so the user does not need domain-specific correction commands.
-- Fixed commands stay immediate, while every free-form message uses one bounded global AI interpretation instead of expanding semantic phrase-regex lists or duplicate per-module calls.
-- Visibility explanations add no menu or per-item button and never ask the user to understand internal filter states.
+- 저장할 때 명령어, 입력 양식 또는 사전 질문이 필요하지 않습니다.
+- 확인 메시지는 결과부터 말하고 제목을 다음 행동으로 반복하지 않으며 빠진 사실을 `확인 안 된 점`으로 표시합니다.
+- 기본 메뉴에는 선택지 일곱 개만 둡니다. 고급 명령은 `/help 자세히`에서 계속 사용할 수 있습니다.
+- 목록은 항목 여덟 개와 답장 예시 세 개를 보여주며 항목별 버튼을 만들지 않습니다.
+- 아침 메시지는 유일한 평일 예약 브리핑으로 유지합니다.
+- 답장 문맥을 전역 해석 한 번에 포함하므로 도메인별 수정 명령을 외울 필요가 없습니다.
+- 고정 명령은 즉시 처리하고 자유문장은 제한된 전역 AI 해석 한 번만 사용합니다. 의미 정규식 목록이나 모듈별 중복 호출을 늘리지 않습니다.
+- 추천 누락 설명은 메뉴나 항목별 버튼을 추가하지 않고 사용자에게 내부 필터 상태를 이해하라고 요구하지 않습니다.
 
-## Known limits
+## 알려진 제한
 
-- Telegram photos and documents are referenced by Telegram file ID and can be re-sent, but their contents are not OCR'd or semantically analyzed yet.
-- Every free-form message takes one bounded Codex interpretation call; fixed commands and button callbacks use none.
-- Inbox events do not create weekend or exact-time notifications unless a reminder is separately approved.
-- Permanent preference learning still requires the confidence/risk policy described in `docs/LIFE-INBOX-PLAN.md`.
+- Telegram 사진과 문서는 파일 ID로 참조해 다시 보낼 수 있지만 아직 본문 OCR이나 의미 분석은 하지 않습니다.
+- 모든 자유문장은 제한된 Codex 해석 호출 한 번이 필요합니다. 고정 명령과 버튼 콜백은 AI를 사용하지 않습니다.
+- 별도의 알림을 승인하지 않으면 Inbox 일정은 주말 알림이나 정확한 시각의 알림을 만들지 않습니다.
+- 영구 선호 학습에는 [LIFE-INBOX-PLAN.md](./LIFE-INBOX-PLAN.md)의 신뢰도·위험 정책이 더 필요합니다.
