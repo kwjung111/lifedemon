@@ -74,7 +74,15 @@ function buildJobReportPages(collection = [], { limit = 100, offset = 0, filteri
   if (summary.failures.length) header.push("", `필터 오류 ${summary.failures.length}건: ${summary.failures[0].slice(0, 140)}`);
   const page = { text: header.join("\n"), items: [] };
   for (const [offset, entry] of entries.entries()) {
-    const item = { index: offset + 1, id: selected[offset].id };
+    const item = {
+      index: offset + 1,
+      id: selected[offset].id,
+      domain: "jobs",
+      title: selected[offset].title,
+      company: selected[offset].company,
+      source: selected[offset].source,
+      summary: assessmentFor(selected[offset]).summary || null,
+    };
     if (`${page.text}\n${entry}`.length > telegramLimit - 80) break;
     page.text = `${page.text}\n${entry}`;
     page.items.push(item);

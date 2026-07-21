@@ -8,6 +8,8 @@ import {
   recentFeedbackEvents,
 } from "../../core/state.mjs";
 import { sendMessage, telegram } from "../../telegram.mjs";
+import { proposeReminder } from "../reminders/service.mjs";
+import { runRecommendationFeedbackAgent } from "./agent.mjs";
 import { formatUndoResult, undoLatestFeedback } from "./undo.mjs";
 import { proposeExplicitRule, ruleProposalKeyboard, ruleProposalMessage } from "./service.mjs";
 
@@ -38,6 +40,8 @@ export function createFeedbackBotModule({
   apply = applyProposal,
   send = sendMessage,
   telegramApi = telegram,
+  runAgent = runRecommendationFeedbackAgent,
+  proposeFollowup = proposeReminder,
 } = {}) {
   return {
     id: "feedback",
@@ -46,7 +50,7 @@ export function createFeedbackBotModule({
 
     canHandleMessage(_message, context) {
       return [
-        "feedback_undo", "feedback_history", "feedback_rules_list", "feedback_rule_delete", "preference_rule",
+        "feedback", "feedback_undo", "feedback_history", "feedback_rules_list", "feedback_rule_delete", "preference_rule",
       ].includes(context?.semantic?.route);
     },
 
@@ -88,6 +92,51 @@ export function createFeedbackBotModule({
     async handleMessage(message, context = null) {
       const text = String(message.text || "").trim();
       const semantic = context?.semantic;
+      if (semantic?.route === "feedback") {
+        let result;
+        try {
+          result = await runAgent({ message, context });
+        } catch (error) {
+          await send("추천 피드백 에이전트가 응답하지 않아 아무 변경도 실행하지 않았습니다. 잠시 후 같은 목록에 다시 답장해 주세요.");
+          return true;
+        }
+        const effectOutputs = (result.observations || [])
+          .map((entry) => entry.output)
+          .filter((output) => output?.ok && output?.effect);
+        const proposals = [...new Map(effectOutputs
+          .filter((output) => output.proposal?.id)
+          .map((output) => [output.proposal.id, { proposal: output.proposal, label: output.target }])).values()];
+        const replyMarkup = proposals.length ? {
+          inline_keyboard: proposals.map(({ proposal, label }) => [
+            { text: `계속 제외 · ${String(label || proposal.keyword).slice(0, 28)}`, callback_data: `f:ap:${proposal.id}` },
+            { text: "이번만 제외", callback_data: `f:cn:${proposal.id}` },
+          ]),
+        } : null;
+        const feedbackContext = {
+          domain: context?.domain || semantic.domain,
+          kind: context?.kind || "digest",
+          items: context?.items || [],
+          ...(result.needsClarification ? {
+            pendingFeedback: context?.pendingFeedback
+              ? `${String(context.pendingFeedback).slice(0, 2000)}\n추가 답변: ${text}`
+              : text,
+            pendingAgentEffects: effectOutputs.slice(0, 20),
+          } : {}),
+        };
+        const verifiedEffects = effectOutputs.map((output) => `• ${output.message}`).filter(Boolean);
+        const responseText = [
+          String(result.answer || "요청을 처리했습니다."),
+          verifiedEffects.length ? `실제 반영 결과\n${verifiedEffects.join("\n")}` : null,
+        ].filter(Boolean).join("\n\n").slice(0, 4000);
+        await send(
+          responseText,
+          replyMarkup ? { reply_markup: replyMarkup } : {},
+          { context: feedbackContext },
+        );
+        const followups = effectOutputs.map((output) => output.followup).filter(Boolean);
+        for (const followup of followups) await proposeFollowup(followup);
+        return true;
+      }
       if (semantic?.route === "feedback_undo") {
         await send(formatUndoResult(undoLatestFeedback({ domain: semantic.domain, text })));
         return true;

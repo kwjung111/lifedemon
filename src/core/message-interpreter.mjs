@@ -11,10 +11,8 @@ export const MESSAGE_ROUTES = [
   "not_supported",
 ];
 
-const domains = ["jobs", "housing", "inbox", "reminders", "manager", null];
-const feedbackIntents = [
-  "positive", "negative", "mixed", "applied", "durable_rule", "undo", "clarify", "not_feedback", null,
-];
+const domains = ["jobs", "housing", "inbox", "reminders", "manager", "mixed", null];
+const feedbackRuleKinds = ["exclude_company", "exclude_keyword", "none", null];
 
 export const messageInterpretationSchema = {
   type: "object",
@@ -34,25 +32,8 @@ export const messageInterpretationSchema = {
     url: { type: ["string", "null"] },
     assumptions: { type: "array", items: { type: "string" }, maxItems: 5 },
     clear_event_at: { type: "boolean" },
-    feedback_intent: { type: ["string", "null"], enum: feedbackIntents },
-    scope: { type: ["string", "null"], enum: ["item", "company", "job_role", "housing_type", "location", "cost", "eligibility", "general", null] },
-    strength: { type: ["string", "null"], enum: ["low", "medium", "high", null] },
     preference: { type: ["string", "null"] },
-    keywords: { type: "array", items: { type: "string" }, maxItems: 10 },
-    aspects: {
-      type: "array", maxItems: 8,
-      items: {
-        type: "object", additionalProperties: false,
-        properties: {
-          scope: { type: "string", enum: ["item", "company", "job_role", "housing_type", "location", "cost", "eligibility", "general"] },
-          sentiment: { type: "string", enum: ["positive", "negative"] },
-          keyword: { type: "string" },
-          reason: { type: "string" },
-        },
-        required: ["scope", "sentiment", "keyword", "reason"],
-      },
-    },
-    rule_kind: { type: ["string", "null"], enum: ["exclude_company", "exclude_keyword", "none", null] },
+    rule_kind: { type: ["string", "null"], enum: feedbackRuleKinds },
     rule_keyword: { type: ["string", "null"] },
     rule_id: { type: ["integer", "null"], minimum: 1 },
     outcome: { type: ["string", "null"], enum: ["selected", "not_selected", "waitlisted", "unknown", null] },
@@ -67,7 +48,7 @@ export const messageInterpretationSchema = {
   required: [
     "route", "domain", "confidence", "reason", "clarification", "follow_up", "target_index",
     "title", "kind", "event_at", "next_action", "url", "assumptions", "clear_event_at",
-    "feedback_intent", "scope", "strength", "preference", "keywords", "aspects", "rule_kind",
+    "preference", "rule_kind",
     "rule_keyword", "rule_id", "outcome", "housing_name", "cutoff_priority", "cutoff_score", "supply_units",
     "reached_priority", "announcement_date", "question",
   ],
@@ -98,10 +79,11 @@ function publicContext(context) {
     title: String(item.title || "").slice(0, 300) || null,
     company: String(item.company || "").slice(0, 200) || null,
     source: String(item.source || "").slice(0, 100) || null,
+    summary: String(item.summary || "").slice(0, 500) || null,
     domain: item.domain || context.domain || null,
   }));
   if (!items.length && context.entityId) items.push({
-    index: 1, title: null, company: null, source: null, domain: context.domain || null,
+    index: 1, title: null, company: null, source: null, summary: null, domain: context.domain || null,
   });
   return {
     domain: context.domain || null,
@@ -134,7 +116,7 @@ Choose exactly one route:
 - inbox_list / inbox_next / inbox_show / inbox_update / inbox_complete / inbox_cancel / inbox_reminder: operate on Life Inbox. Use the replied item/list and target_index. inbox_reminder means create a reminder from an Inbox event.
 - recommendations_list / recommendations_next: show current/all or next-page recommendations. domain must be jobs or housing.
 - recommendation_explain: explain why a job or housing notice is missing, hidden, excluded, duplicated, expired, or already tracked. Extract the shortest identifying company/title phrase into title and set domain when inferable. When replying to an item or visibility-choice message, use target_index.
-- feedback: preference feedback about a replied recommendation. Set feedback_intent and target_index. "지원했어" is applied, not negative feedback.
+- feedback: any preference, application action, undo request, or future exclusion request about replied recommendations. Route it to the recommendation agent; detailed target resolution and execution happen there. "지원했어" is application tracking, not negative feedback.
 - feedback_undo / feedback_history: undo the previous feedback action, or show learned feedback history.
 - feedback_rules_list / feedback_rule_delete: show durable rules, or delete a rule. For deletion extract rule_id and domain from J/H notation or meaning.
 - preference_rule: a durable future rule such as excluding private rentals or a company. Use rule_kind and rule_keyword.
@@ -149,7 +131,8 @@ Rules:
 - Infer meaning semantically, including Korean slang, typos, omitted particles, and natural follow-ups. Do not rely on literal keywords.
 - A reply may inherit its domain and target only from REPLIED_MESSAGE_CONTEXT. A generic continuation may inherit jobs/housing only when unambiguous.
 - A reply to a visibility explanation that asks to restore/cancel its applied or ignored state is feedback_undo for that target, not a new cancellation request.
-- Never invent a target. target_index must equal one of the context item indexes. Use 1 for a single replied item.
+- For feedback routing, do not require the classifier to resolve every target. The downstream recommendation agent may inspect items, use several tools, complete grounded actions, and ask only about a genuinely unresolved part.
+- Never invent an item that is absent from the reply context. Use not_supported for feedback only when there is no replied jobs/housing recommendation context.
 - Never invent a URL. Return a URL only when it appears verbatim in USER_MESSAGE.
 - Do not invent dates, money, eligibility, outcomes, or application facts.
 - Feedback scope is one of item, company, job_role, housing_type, location, cost, eligibility, or general. Preserve separate positive and negative aspects, each with a concise reason.
@@ -174,19 +157,31 @@ function groundedUrl(value, message) {
 }
 
 const targetRoutes = new Set([
-  "inbox_update", "inbox_complete", "inbox_cancel", "inbox_show", "inbox_reminder", "feedback",
+  "inbox_update", "inbox_complete", "inbox_cancel", "inbox_show", "inbox_reminder",
   "housing_result", "housing_announcement_date",
 ]);
+
 export function normalizeMessageInterpretation(value, message, context = null, { now = new Date() } = {}) {
   if (!value || !MESSAGE_ROUTES.includes(value.route)) throw new Error("Message AI returned an invalid route");
   const confidence = Math.max(0, Math.min(100, Number(value.confidence) || 0));
-  const indexes = new Set((context?.items || []).map((item) => Number(item.index)).filter(Boolean));
+  const contextItems = context?.items || [];
+  const indexes = new Set(contextItems.map((item) => Number(item.index)).filter(Boolean));
+  const recommendationDomains = [...new Set(contextItems
+    .map((item) => item.domain || context?.domain)
+    .filter((domain) => ["jobs", "housing"].includes(domain)))];
+  if (!recommendationDomains.length && context?.entityId && ["jobs", "housing"].includes(context?.domain)) {
+    recommendationDomains.push(context.domain);
+  }
   if (context?.entityId) indexes.add(1);
   let targetIndex = Number(value.target_index) || null;
   if (targetIndex && !indexes.has(targetIndex)) targetIndex = null;
   let route = value.route;
+  let domain = domains.includes(value.domain) ? value.domain : null;
+  if (route === "feedback" && recommendationDomains.length) {
+    domain = recommendationDomains.length === 1 ? recommendationDomains[0] : "mixed";
+  }
   let clarification = cleanText(value.clarification, 300);
-  if (confidence < 75 && route !== "not_supported") {
+  if (confidence < 75 && route !== "not_supported" && !(route === "feedback" && recommendationDomains.length)) {
     route = "not_supported";
     clarification ||= "의도를 확실히 이해하지 못했어요. 조금만 더 구체적으로 말해 주세요.";
   }
@@ -194,10 +189,9 @@ export function normalizeMessageInterpretation(value, message, context = null, {
     route = "not_supported";
     clarification ||= "어느 항목을 말하는지 번호나 해당 메시지 답장으로 알려 주세요.";
   }
-  const domain = domains.includes(value.domain) ? value.domain : null;
   const domainRequired = {
     recommendations_list: ["jobs", "housing"], recommendations_next: ["jobs", "housing"],
-    feedback: ["jobs", "housing"], preference_rule: ["jobs", "housing"],
+    feedback: ["jobs", "housing", "mixed"], preference_rule: ["jobs", "housing"],
     housing_result: ["housing"], housing_announcement_date: ["housing"],
   }[route];
   if (domainRequired && !domainRequired.includes(domain)) {
@@ -234,9 +228,9 @@ export function normalizeMessageInterpretation(value, message, context = null, {
     route = "not_supported";
     clarification ||= "어떤 공고가 안 보이는지 회사명이나 공고 제목을 알려 주세요.";
   }
-  if (route === "feedback" && !["positive", "negative", "mixed", "applied", "durable_rule", "undo"].includes(value.feedback_intent)) {
+  if (route === "feedback" && !recommendationDomains.length) {
     route = "not_supported";
-    clarification ||= "그 공고에서 좋거나 아쉬운 점을 조금 더 구체적으로 말해 주세요.";
+    clarification ||= "추천 목록 메시지에 답장해 주세요.";
   }
   return {
     route,
@@ -253,12 +247,7 @@ export function normalizeMessageInterpretation(value, message, context = null, {
     url: groundedUrl(value.url, message),
     assumptions: Array.isArray(value.assumptions) ? value.assumptions.map((item) => cleanText(item, 300)).filter(Boolean).slice(0, 5) : [],
     clearEventAt: Boolean(value.clear_event_at),
-    feedbackIntent: feedbackIntents.includes(value.feedback_intent) ? value.feedback_intent : null,
-    scope: value.scope || null,
-    strength: value.strength || null,
     preference: cleanText(value.preference, 500),
-    keywords: Array.isArray(value.keywords) ? value.keywords.map((item) => cleanText(item, 100)).filter(Boolean).slice(0, 10) : [],
-    aspects: Array.isArray(value.aspects) ? value.aspects.slice(0, 8) : [],
     ruleKind: value.rule_kind || null,
     ruleKeyword: cleanText(value.rule_keyword, 200),
     ruleId: Number(value.rule_id) || null,

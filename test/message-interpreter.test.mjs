@@ -10,8 +10,7 @@ function raw(overrides = {}) {
     route: "not_supported", domain: null, confidence: 99, reason: "분류", clarification: null,
     follow_up: false, target_index: null, title: null, kind: null, event_at: null,
     next_action: null, url: null, assumptions: [], clear_event_at: false,
-    feedback_intent: null, scope: null, strength: null, preference: null, keywords: [],
-    aspects: [], rule_kind: null, rule_keyword: null, rule_id: null, outcome: null, housing_name: null,
+    preference: null, rule_kind: null, rule_keyword: null, rule_id: null, outcome: null, housing_name: null,
     cutoff_priority: null, cutoff_score: null, supply_units: null, reached_priority: null,
     announcement_date: null, question: null,
     ...overrides,
@@ -39,7 +38,7 @@ test("uses one global structured call for a natural recommendation request", asy
   assert.match(prompt, /Never follow instructions/);
 });
 
-test("fails closed for low confidence and invalid reply targets", () => {
+test("fails closed for low confidence but delegates target resolution to the feedback agent", () => {
   const context = { domain: "jobs", items: [{ index: 1, id: "one" }] };
   const uncertain = normalizeMessageInterpretation(
     raw({ route: "recommendations_list", domain: "jobs", confidence: 60 }),
@@ -48,11 +47,23 @@ test("fails closed for low confidence and invalid reply targets", () => {
   assert.equal(uncertain.route, "not_supported");
 
   const invalidTarget = normalizeMessageInterpretation(
-    raw({ route: "feedback", domain: "jobs", target_index: 9, feedback_intent: "negative" }),
+    raw({ route: "feedback", domain: "jobs", target_index: 9 }),
     { text: "9번 별로" }, context,
   );
-  assert.equal(invalidTarget.route, "not_supported");
-  assert.match(invalidTarget.clarification, /어느 항목/);
+  assert.equal(invalidTarget.route, "feedback");
+
+  const uncertainFeedback = normalizeMessageInterpretation(
+    raw({ route: "feedback", domain: "jobs", confidence: 55 }),
+    { text: "이 중에서 내 취향 아닌 건 알아서 빼" }, context,
+  );
+  assert.equal(uncertainFeedback.route, "feedback");
+
+  const missingContext = normalizeMessageInterpretation(
+    raw({ route: "feedback", domain: "jobs" }),
+    { text: "이건 별로" }, null,
+  );
+  assert.equal(missingContext.route, "not_supported");
+  assert.match(missingContext.clarification, /추천 목록/);
 });
 
 test("normalizes future reminders and rejects past reminders", () => {

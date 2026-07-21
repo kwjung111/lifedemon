@@ -34,6 +34,12 @@ function parseSummary(value) {
   } catch { return { completedAt: null, summary: [] }; }
 }
 
+function recommendationSummary(row) {
+  try {
+    return JSON.parse(row.ai_result_json || row.result_json || "null")?.summary || null;
+  } catch { return null; }
+}
+
 function changeCounts(entries) {
   return entries.reduce((result, item) => ({
     newCount: result.newCount + (Number(item.newCount) || 0),
@@ -127,7 +133,10 @@ export function formatMorningBriefing(snapshot) {
   else {
     for (const notice of snapshot.housing.candidates) {
       const index = items.length + 1;
-      items.push({ index, id: notice.id, domain: "housing", title: notice.title, source: notice.source });
+      items.push({
+        index, id: notice.id, domain: "housing", title: notice.title,
+        source: notice.source, summary: recommendationSummary(notice),
+      });
       lines.push(`${index}. ${link(notice.url, `[${notice.source}] ${String(notice.title).slice(0, 82)}`)}${notice.apply_end ? ` · 마감 ${notice.apply_end}` : ""}`);
     }
   }
@@ -142,7 +151,10 @@ export function formatMorningBriefing(snapshot) {
   else {
     for (const job of snapshot.jobs.selected) {
       const index = items.length + 1;
-      items.push({ index, id: job.id, domain: "jobs", title: job.title, company: job.company, source: job.source });
+      items.push({
+        index, id: job.id, domain: "jobs", title: job.title,
+        company: job.company, source: job.source, summary: recommendationSummary(job),
+      });
       lines.push(`${index}. ${link(job.url, `${String(job.company).slice(0, 35)} — ${String(job.title).slice(0, 70)}`)}`);
     }
   }
@@ -191,6 +203,7 @@ export async function sendMoreRecommendations(domain, { offset = 0, limit = 6 } 
   const items = rows.map((row, index) => ({
     index: index + 1, id: row.id, domain,
     title: row.title, company: row.company || null, source: row.source,
+    summary: recommendationSummary(row),
   }));
   const lines = [`${domain === "housing" ? "🏠 주택" : "💼 채용"} 추천 · ${start + 1}–${start + rows.length} / ${total}`];
   for (const [index, row] of rows.entries()) {
