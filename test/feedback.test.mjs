@@ -24,10 +24,9 @@ const {
   recordFeedbackEvent,
 } = await import("../src/core/state.mjs");
 const {
-  parseEntityFeedback,
   proposeExplicitRule,
   ruleProposalKeyboard,
-  saveEntityFeedback,
+  saveInterpretedFeedback,
 } = await import("../src/apps/feedback/service.mjs");
 const { createFeedbackBotModule } = await import("../src/apps/feedback/bot-module.mjs");
 const { db: housingDb } = await import("../src/db.mjs");
@@ -43,37 +42,16 @@ test.after(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-test("parses item feedback without treating silence as a negative signal", () => {
-  assert.deepEqual(parseEntityFeedback("2번 괜찮네", { domain: "jobs", company: "좋은회사" }), {
-    signal: "positive", durableRule: null,
-  });
-  assert.equal(parseEntityFeedback("2번 나중에 볼게", { domain: "jobs", company: "좋은회사" }), null);
-  assert.equal(parseEntityFeedback("2번 별로야", { domain: "jobs", company: "좋은회사" }).signal, "negative");
-  assert.equal(parseEntityFeedback("2번 관심 없어", { domain: "jobs", company: "좋은회사" }).signal, "negative");
-  assert.equal(parseEntityFeedback("위시켓은 좀 미묘한데", { domain: "jobs", company: "위시켓" }).signal, "negative");
-  assert.equal(parseEntityFeedback("두 번째가 제일 나아 보이네", { domain: "jobs", company: "좋은회사" }).signal, "positive");
-  assert.equal(parseEntityFeedback("이건 지원해볼 만함", { domain: "jobs", company: "좋은회사" }).signal, "positive");
-  assert.equal(parseEntityFeedback("이거 신청할게", { domain: "housing" }), null);
-  assert.equal(parseEntityFeedback("이거 신청 완료", { domain: "housing" }).signal, "applied");
-  assert.equal(parseEntityFeedback("회사는 좋은데 직무는 별로", { domain: "jobs", company: "좋은회사" }), null);
-  assert.deepEqual(
-    parseEntityFeedback("2번 이 회사는 앞으로 빼", { domain: "jobs", company: "제외회사" }).durableRule,
-    { domain: "jobs", kind: "exclude_company", keyword: "제외회사", instruction: "제외회사 회사 제외" },
-  );
-  assert.equal(
-    parseEntityFeedback("이 회사 다음부터 안 보여줘", { domain: "jobs", company: "제외회사" }).durableRule.keyword,
-    "제외회사",
-  );
-});
-
 test("stores feedback centrally and creates only one pending durable proposal", () => {
-  const first = saveEntityFeedback({
+  const first = saveInterpretedFeedback({
     domain: "jobs", entityId: "job-1", text: "이 회사는 앞으로 빼",
     company: "제외회사", title: "SRE", source: "wanted",
+    interpretation: { intent: "durable_rule", scope: "company", ruleKind: "exclude_company", confidence: 99 },
   });
-  const second = saveEntityFeedback({
+  const second = saveInterpretedFeedback({
     domain: "jobs", entityId: "job-2", text: "이 회사 계속 제외",
     company: "제외회사", title: "DevOps", source: "remember",
+    interpretation: { intent: "durable_rule", scope: "company", ruleKind: "exclude_company", confidence: 99 },
   });
   assert.equal(first.event.signal, "negative");
   assert.equal(first.proposal.id, second.proposal.id);
@@ -130,17 +108,22 @@ test("requires one approval before a durable rule becomes active", async () => {
   assert.match(sent[0], /앞으로 적용/);
   assert.equal(callbacks[0].method, "answerCallbackQuery");
 
-  const repeated = saveEntityFeedback({
+  const repeated = saveInterpretedFeedback({
     domain: "jobs", entityId: "job-repeat", text: "이 회사는 앞으로 빼",
     company: "승인회사", title: "반복 공고", source: "wanted",
+    interpretation: { intent: "durable_rule", scope: "company", ruleKind: "exclude_company", confidence: 99 },
   });
   assert.equal(repeated.alreadyActive, true);
   assert.equal(repeated.proposal, null);
 
-  assert.equal(await module.handleMessage({ text: "피드백 규칙 보여줘" }), true);
+  assert.equal(await module.handleMessage({ text: "피드백 규칙 보여줘" }, {
+    semantic: { route: "feedback_rules_list", domain: null },
+  }), true);
   assert.match(sent.at(-1), new RegExp(`J${listFeedbackRules("jobs")[0].id}\\.`));
   const activeId = listFeedbackRules("jobs")[0].id;
-  assert.equal(await module.handleMessage({ text: `J${activeId} 규칙 삭제` }), true);
+  assert.equal(await module.handleMessage({ text: `J${activeId} 규칙 삭제` }, {
+    semantic: { route: "feedback_rule_delete", domain: "jobs", ruleId: activeId },
+  }), true);
   assert.equal(listFeedbackRules("jobs").length, 0);
 });
 
@@ -158,10 +141,11 @@ test("undo restores application state and removes the feedback from active histo
     rawText: "테스트 공고",
   });
   const previousApplicationStatus = jobApplicationStatus(jobId);
-  const feedback = saveEntityFeedback({
+  const feedback = saveInterpretedFeedback({
     domain: "jobs", entityId: jobId, text: "1번 별로야",
     company: "되돌림회사", title: "SRE", source: "wanted",
     metadata: { previousApplicationStatus },
+    interpretation: { intent: "negative", scope: "item", confidence: 99 },
   });
   setJobApplication(jobId, "ignored");
   assert.equal(jobApplicationStatus(jobId), "ignored");
@@ -177,10 +161,11 @@ test("undo also disables a durable rule approved from that feedback", async () =
     source: "wanted", company: "영구제외회사", title: "Platform Engineer", url: "https://example.test/rule-undo",
     rawText: "테스트 공고",
   });
-  const feedback = saveEntityFeedback({
+  const feedback = saveInterpretedFeedback({
     domain: "jobs", entityId: jobId, text: "이 회사는 앞으로 빼",
     company: "영구제외회사", title: "Platform Engineer", source: "wanted",
     metadata: { previousApplicationStatus: null },
+    interpretation: { intent: "durable_rule", scope: "company", ruleKind: "exclude_company", confidence: 99 },
   });
   setJobApplication(jobId, "ignored");
   const module = createFeedbackBotModule({

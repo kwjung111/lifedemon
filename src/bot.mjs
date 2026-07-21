@@ -5,9 +5,19 @@ import {
   failTelegramUpdate,
   getPlatformSetting,
   setPlatformSetting,
+  telegramMessageContext,
 } from "./core/state.mjs";
 import { botModules, syncTelegramMenu } from "./modules.mjs";
 import { chatId, sendMessage, telegram } from "./telegram.mjs";
+import { interpretMessage as interpretTelegramMessage } from "./core/message-interpreter.mjs";
+
+function pendingReminderText() {
+  try {
+    const pending = JSON.parse(getPlatformSetting("reminder_ai_clarification", "null"));
+    if (!pending?.text || Date.now() - Date.parse(pending.createdAt) > 10 * 60_000) return null;
+    return pending.text;
+  } catch { return null; }
+}
 
 await syncTelegramMenu(telegram, chatId);
 
@@ -22,6 +32,10 @@ const bot = createBotRuntime({
   beginUpdate: beginTelegramUpdate,
   completeUpdate: completeTelegramUpdate,
   failUpdate: failTelegramUpdate,
+  messageContext: telegramMessageContext,
+  interpretMessage: (message, context) => interpretTelegramMessage(message, context, {
+    pendingReminder: pendingReminderText(),
+  }),
 });
 
 await bot.run();

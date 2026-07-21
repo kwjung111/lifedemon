@@ -13,7 +13,6 @@ process.env.JOB_DATA_DIR = dataDir;
 process.env.HOUSING_USER_PROFILE_FILE = housingProfile;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
-process.env.FEEDBACK_AI_ENABLED = "false";
 
 let messageId = 900;
 globalThis.fetch = async () => ({
@@ -49,7 +48,13 @@ test.after(() => {
 test("routes company-name feedback without a rigid numbered phrase", async () => {
   assert.equal(await jobsBotModule.handleMessage({
     text: "위시켓은 좀 미묘한데", reply_to_message: { message_id: 500 },
-  }), true);
+  }, { domain: "jobs", kind: "digest", items: [
+    { index: 1, id: first }, { index: 2, id: second },
+  ], semantic: {
+    route: "feedback", domain: "jobs", targetIndex: 2, feedbackIntent: "negative",
+    scope: "item", strength: "medium", preference: "위시켓은 미묘함", keywords: [], aspects: [],
+    confidence: 98, reason: "부정적 의견",
+  } }), true);
   assert.equal(jobApplicationStatus(second), null);
   assert.equal(jobRecommendationHidden(second), true);
   const event = recentFeedbackEvents()[0];
@@ -60,28 +65,33 @@ test("routes company-name feedback without a rigid numbered phrase", async () =>
 test("routes a natural ordinal positive preference", async () => {
   assert.equal(await jobsBotModule.handleMessage({
     text: "첫 번째가 제일 나아 보이네", reply_to_message: { message_id: 500 },
-  }), true);
+  }, { domain: "jobs", kind: "digest", items: [
+    { index: 1, id: first }, { index: 2, id: second },
+  ], semantic: {
+    route: "feedback", domain: "jobs", targetIndex: 1, feedbackIntent: "positive",
+    scope: "item", strength: "medium", preference: "첫 번째 선호", keywords: [], aspects: [],
+    confidence: 98, reason: "긍정적 의견",
+  } }), true);
   const event = recentFeedbackEvents()[0];
   assert.equal(event.entity_id, first);
   assert.equal(event.signal, "positive");
 });
 
-test("asks one short question when a multi-item reply is ambiguous", async () => {
+test("does not apply feedback when the global interpretation has no target", async () => {
   const before = recentFeedbackEvents().length;
   assert.equal(await jobsBotModule.handleMessage({
     text: "이건 괜찮아 보이는데", reply_to_message: { message_id: 500 },
-  }), true);
+  }, { domain: "jobs", kind: "digest", items: [
+    { index: 1, id: first }, { index: 2, id: second },
+  ], semantic: {
+    route: "feedback", domain: "jobs", targetIndex: null, feedbackIntent: "positive",
+    scope: "item", strength: "medium", preference: "괜찮음", keywords: [], aspects: [],
+    confidence: 98, reason: "대상 불명",
+  } }), true);
   assert.equal(recentFeedbackEvents().length, before);
   const question = platformDb.prepare("SELECT * FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
   const payload = JSON.parse(question.payload_json);
-  assert.match(payload.text, /어느 공고를 말하는지/);
-  assert.equal(JSON.parse(question.context_json).pendingFeedback, "이건 괜찮아 보이는데");
-
-  assert.equal(await jobsBotModule.handleMessage({
-    text: "2번", reply_to_message: { message_id: question.message_id },
-  }), true);
-  assert.equal(recentFeedbackEvents()[0].entity_id, second);
-  assert.equal(recentFeedbackEvents()[0].signal, "positive");
+  assert.match(payload.text, /어느 공고/);
 });
 
 test("preserves applied tracking while negative AI feedback hides only the recommendation", async () => {
@@ -91,35 +101,35 @@ test("preserves applied tracking while negative AI feedback hides only the recom
   });
   saveJobDigestItems(501, [{ index: 1, id }]);
   setJobApplication(id, "applied");
-  const module = createJobsBotModule({
-    aiEnabled: () => true,
-    interpret: async () => ({
-      intent: "negative", targetIndex: 1, scope: "job_role", strength: "medium",
-      preference: "백엔드 직무는 선호하지 않음", keywords: ["백엔드"],
-      aspects: [{ scope: "job_role", sentiment: "negative", keyword: "백엔드", reason: "직무 불호" }],
-      confidence: 98, reason: "직무에 대한 명확한 불호", source: "ai",
-    }),
+  const module = createJobsBotModule();
+  await module.handleMessage({ text: "직무는 별로지만 면접은 볼 거야", chat: { id: 1 }, reply_to_message: { message_id: 501 } }, {
+    domain: "jobs", kind: "digest", items: [{ index: 1, id }],
+    semantic: {
+      route: "feedback", domain: "jobs", targetIndex: 1, feedbackIntent: "negative",
+      scope: "item", strength: "medium", preference: "백엔드 직무는 선호하지 않음", keywords: ["백엔드"],
+      aspects: [{ scope: "item", sentiment: "negative", keyword: "백엔드" }],
+      confidence: 98, reason: "직무에 대한 명확한 불호",
+    },
   });
-  await module.handleMessage({ text: "직무는 별로지만 면접은 볼 거야", chat: { id: 1 }, reply_to_message: { message_id: 501 } });
   assert.equal(jobApplicationStatus(id), "applied");
   assert.equal(jobRecommendationHidden(id), true);
 });
 
 test("stores mixed AI aspects without hiding the current posting", async () => {
   setJobRecommendationHidden(second, false);
-  const module = createJobsBotModule({
-    aiEnabled: () => true,
-    interpret: async () => ({
-      intent: "mixed", targetIndex: 2, scope: "item", strength: "high",
-      preference: "회사는 좋지만 직무는 비선호", keywords: ["위시켓", "Azure"],
+  const module = createJobsBotModule();
+  await module.handleMessage({ text: "위시켓 회사는 좋은데 직무는 별로", chat: { id: 1 }, reply_to_message: { message_id: 500 } }, {
+    domain: "jobs", kind: "digest", items: [{ index: 1, id: first }, { index: 2, id: second }],
+    semantic: {
+      route: "feedback", domain: "jobs", targetIndex: 2, feedbackIntent: "mixed",
+      scope: "item", strength: "high", preference: "회사는 좋지만 직무는 비선호", keywords: ["위시켓", "Azure"],
       aspects: [
-        { scope: "company", sentiment: "positive", keyword: "(주)위시켓", reason: "회사 선호" },
-        { scope: "job_role", sentiment: "negative", keyword: "Azure", reason: "직무 비선호" },
+        { scope: "company", sentiment: "positive", keyword: "(주)위시켓" },
+        { scope: "item", sentiment: "negative", keyword: "Azure" },
       ],
-      confidence: 97, reason: "상반된 측면", source: "ai",
-    }),
+      confidence: 97, reason: "상반된 측면",
+    },
   });
-  await module.handleMessage({ text: "위시켓 회사는 좋은데 직무는 별로", chat: { id: 1 }, reply_to_message: { message_id: 500 } });
   const event = recentFeedbackEvents()[0];
   assert.equal(event.signal, "mixed");
   assert.equal(JSON.parse(event.metadata_json).interpretation.aspects.length, 2);

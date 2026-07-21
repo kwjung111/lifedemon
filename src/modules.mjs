@@ -4,20 +4,30 @@ import { feedbackBotModule } from "./apps/feedback/bot-module.mjs";
 import { managerBotModule } from "./apps/manager/bot-module.mjs";
 import { reminderBotModule } from "./apps/reminders/bot-module.mjs";
 import { briefingBotModule } from "./apps/briefing/bot-module.mjs";
+import { inboxBotModule } from "./apps/inbox/bot-module.mjs";
+import { manualBotModule } from "./apps/manual/bot-module.mjs";
 
-export const botModules = [reminderBotModule, briefingBotModule, housingBotModule, jobsBotModule, feedbackBotModule, managerBotModule];
+export const botModules = [
+  manualBotModule,
+  reminderBotModule,
+  briefingBotModule,
+  housingBotModule,
+  jobsBotModule,
+  feedbackBotModule,
+  managerBotModule,
+  inboxBotModule,
+];
 
 export function telegramMenuCommands() {
-  const commands = [
-    { command: "help", description: "📖 전체 기능과 사용법" },
-    ...botModules.flatMap((module) => module.commands || []),
+  return [
+    { command: "help", description: "📖 처음이라면 여기" },
+    { command: "briefing", description: "☀️ 오늘 핵심 브리핑" },
+    { command: "inbox", description: "📥 저장한 일정·할 일" },
+    { command: "reminders", description: "🔔 예정 알림 확인·취소" },
+    { command: "housing_status", description: "🏠 주택 지원 진행" },
+    { command: "job_status", description: "💼 채용 지원 진행" },
+    { command: "ask", description: "🧭 서버 상태·사용량 질문" },
   ];
-  const seen = new Set();
-  return commands.filter(({ command }) => {
-    if (seen.has(command)) return false;
-    seen.add(command);
-    return true;
-  });
 }
 
 export async function syncTelegramMenu(telegram, chatId) {

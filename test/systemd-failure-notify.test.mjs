@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
+const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-failure-notify-"));
+process.env.MONITOR_DATA_DIR = dataDir;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
 
 const { buildFailureMessage, sanitizeFailureText } = await import("../src/admin/notify-systemd-failure.mjs");
+const { platformDb } = await import("../src/core/state.mjs");
+
+test.after(() => {
+  platformDb.close();
+  rmSync(dataDir, { recursive: true, force: true });
+});
 
 test("redacts common credentials from systemd failure logs", () => {
   const text = sanitizeFailureText("token=secret-value Bearer abc.def bot123456:telegram-secret");

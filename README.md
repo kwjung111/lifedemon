@@ -15,6 +15,7 @@ Life Daemon은 반복적인 탐색, 추적, 기록과 알림을 대신 수행하
 - 한국어 자연어 리마인더와 전용 Google Calendar 양방향 동기화
 - systemd 기반 상시 실행과 평일 스케줄링
 - SQLite 상태 일일 백업과 30일 보관
+- 형식 없는 Life Inbox 입력과 자연어 수정·취소
 
 향후 면접 일정, 가격 추적 등 다른 생활 자동화 모듈을 같은 런타임에 추가할 수 있습니다.
 
@@ -62,11 +63,26 @@ all results but do not send separate daily messages.
 
 The briefing includes every actionable event due today, application counts, and
 at most the top three housing and top three job recommendations. A domain whose
-top recommendations did not change is reduced to `변경 없음`. Reply with normal
-language such as `4번 지원했어`; the mixed-domain context routes the number to
-the correct tracker. `주택 더 보여줘` or `채용 더 보여줘` returns only the next
-recommendations in one additional message. `/housing` and `/jobs` remain
-available for their existing detailed views.
+top recommendations did not change is reduced to `변경 없음`. Every free-form
+Telegram message is interpreted once by one bounded structured AI router. The
+result includes route, domain, target, extracted fields, confidence, and any
+clarification; domain modules validate and execute that result without a second
+interpretation call or semantic phrase-regex fallback. Fixed slash commands and
+callback protocols remain deterministic.
+`/housing_status` remains the housing
+application-status view, while `/jobs` retains the detailed job recommendation view.
+
+## Life Inbox
+
+Send a life event, task, link, memo, photo, or document directly to the Telegram bot without a command. The global AI interpreter decides whether it is an Inbox item and extracts only structured, validated fields. The bot responds once with what it saved, the smallest assumptions it made, and the next action. An Inbox event is stored but does not become a timed reminder until the user replies `알림도 등록해` and approves the reminder proposal. `/inbox` shows eight items at a time; reply to the list with `2번 완료`, `1번 23일로 변경`, `2번 보여줘`, or `더 보여줘`. Stored links remain clickable and stored Telegram attachments can be re-sent. At most three non-stale next actions are included in the existing weekday 09:00 briefing rather than generating another scheduled message.
+
+The Telegram command menu exposes only seven common actions. Existing advanced commands still work and are listed under `/help 자세히`. See the Korean user guide at [docs/TELEGRAM-MANUAL.md](./docs/TELEGRAM-MANUAL.md), the one-pass interpretation design at [docs/MESSAGE-INTERPRETATION.md](./docs/MESSAGE-INTERPRETATION.md), and the human-journey validation matrix at [docs/UX-VALIDATION.md](./docs/UX-VALIDATION.md).
+
+If the interpreter is unavailable or uncertain, the bot performs no mutation and asks for a retry or one concise clarification. It never silently switches to a keyword parser.
+
+## Recommendation visibility explanations
+
+Ask naturally why a posting is missing, for example `큐픽스 공고 왜 안 보여?` or `2026년 1차 청년 매입임대 왜 목록에서 빠졌어?`. The global interpreter extracts only the domain and identifying phrase. Code compares the current application, feedback, durable-rule, source, review, deadline, deduplication, and complete recommendation state before returning one reason. Similar names produce one numbered clarification, and an unknown posting never receives a guessed explanation. Explanation messages retain their item context, so an incorrect `지원했어` or `관심없어` action can be undone by replying to that message.
 
 ## Low-friction feedback
 
@@ -82,16 +98,15 @@ button. Other feedback is sent by replying to the digest with the item number:
 콘텐츠브릿지는 지원해볼 만함
 ```
 
-The wording is conversational rather than command-only. A reply may identify an
-item by number anywhere in the sentence, Korean ordinal, company/source name, or
-a distinctive title term. A single-item message also accepts `이건 별로`
-without a number. An AI-first interpreter resolves the target and preserves the
+The wording is conversational rather than command-only. The global interpreter
+resolves numbers, ordinals, company/source names, distinctive title terms, and
+single-item reply context semantically. It preserves the
 meaning, scope, strength, and separate positive/negative aspects of nuanced
 feedback. It runs directly from the reply without `/ask`. Only public digest
 labels are sent to the interpreter; private posting bodies and credentials are
 not included. Low-confidence or ambiguous interpretations produce one short
 clarification instead of a guessed mutation. If the interpreter is unavailable,
-the narrow deterministic parser remains as a safe fallback.
+the message is left unchanged and the user is asked to retry.
 
 Item feedback is stored in the shared platform database. A negative reply hides
 that item but does not silently become a permanent preference. Wording that
@@ -158,9 +173,8 @@ without a separate usage command. Common operations questions may also be sent
 without a command, such as `채용공고 우선순위가 어떻게 돼?` or
 `수집이 마지막으로 언제 돌았지?`.
 
-Common health and priority questions are formatted directly from a bounded
-snapshot. More complex or causal questions start an autonomous read-only
-investigation. The agent may adaptively inspect an allowlisted Life Daemon
+Natural operations questions are routed by the same global interpreter and then
+answered by an autonomous read-only investigation. The agent may adaptively inspect an allowlisted Life Daemon
 service or timer, bounded journal logs, SQLite integrity and queue state, server
 resources, deployment state, configuration presence, fixed upstream network
 connectivity, deployed unit definitions, and bounded source-code matches.
@@ -218,7 +232,14 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 
 ## Structure
 
-- `src/core/`: Telegram 라우팅과 플랫폼 상태
+- `src/apps/inbox/`: Format-free life items, paging, attachment retrieval, and natural corrections
+- `src/apps/briefing/`: The bounded weekday cross-domain briefing and recommendation-list execution
+- `src/apps/feedback/`: Recommendation feedback and durable-rule proposals
+- `src/apps/manager/`: Read-only operational questions and Codex conversation
+- `src/apps/manual/`: One-screen Telegram manual and detailed command guide
+- `src/modules.mjs`: Enabled modules and the curated seven-command Telegram menu
+
+- `src/core/`: one-pass AI message interpretation, Telegram routing, and platform state
 - `src/apps/housing/`: 주거 도메인 명령과 공식 링크 탐색
 - `src/apps/jobs/`: 채용 공고 수집, 기업 검증, 사용자 적합도 필터링
 - `src/apps/reminders/`: 전역 이벤트·리마인더
@@ -240,8 +261,8 @@ JobPlanet company verification uses the configured account (`JOBPLANET_ID`, `JOB
 ## Natural-language reminders
 
 The Telegram gateway accepts natural Korean reminder requests such as
-`/remind 내일 오후 3시에 병원 예약 알려줘`. A sandboxed, tool-free Codex
-request converts relative dates in the
+`/remind 내일 오후 3시에 병원 예약 알려줘`. The same sandboxed, tool-free
+global interpreter used for other free-form messages converts relative dates in the
 `Asia/Seoul` timezone into a structured reminder. Missing or ambiguous dates and
 times cause a clarification question instead of a guessed schedule. The parsed
 time and title are shown with the existing approval buttons before registration.
@@ -249,7 +270,7 @@ The strict `/remind YYYY-MM-DD HH:MM title` form remains available as a fast,
 AI-free fallback. Natural-language parsing uses the server's ChatGPT-linked Codex
 login first and only uses `CODEX_API_FALLBACK_KEY` (or `OPENAI_API_KEY`) when a
 valid fallback key is configured and the login reports a quota or authentication
-failure. The parser has no web search and runs in a temporary read-only sandbox.
+failure. The interpreter has no web search and runs in a temporary read-only sandbox.
 
 ## Google Calendar sync
 

@@ -25,7 +25,6 @@ process.env.JOB_USER_PROFILE_FILE = jobProfile;
 process.env.JOB_COMPANY_VERIFICATION_FILE = companies;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
-process.env.FEEDBACK_AI_ENABLED = "false";
 
 let telegramMessageId = 1200;
 globalThis.fetch = async () => ({
@@ -49,6 +48,8 @@ const {
   formatMorningBriefing, morningBriefingSnapshot, sendMorningBriefing, sendMoreRecommendations,
 } = await import("../src/apps/briefing/report.mjs");
 const { briefingBotModule } = await import("../src/apps/briefing/bot-module.mjs");
+const { jobsBotModule } = await import("../src/apps/jobs/bot-module.mjs");
+const { createInboxItem } = await import("../src/apps/inbox/store.mjs");
 
 function housingFixture(index) {
   return {
@@ -123,9 +124,16 @@ test("routes a mixed briefing number to the correct application tracker", async 
   const context = JSON.parse(row.context_json);
   const target = context.items.find((item) => item.domain === "jobs");
   assert.ok(target);
-  assert.equal(await briefingBotModule.handleMessage({
+  assert.equal(await jobsBotModule.handleMessage({
     message_id: 5001, text: `${target.index}번 지원했어`, chat: { id: 1 },
     reply_to_message: { message_id: delivered.message_id },
+  }, {
+    ...context,
+    semantic: {
+      route: "feedback", domain: "jobs", targetIndex: target.index, feedbackIntent: "applied",
+      scope: "item", strength: "high", preference: "지원 완료", keywords: [], aspects: [],
+      confidence: 99, reason: "지원 완료를 명시함",
+    },
   }), true);
   assert.equal(jobApplicationStatus(jobId), "applied");
 });
@@ -135,7 +143,46 @@ test("shows only the remaining housing recommendations on request", async () => 
   const row = platformDb.prepare("SELECT payload_json, context_json FROM telegram_outbox WHERE message_id=?").get(delivered.message_id);
   const payload = JSON.parse(row.payload_json);
   const context = JSON.parse(row.context_json);
-  assert.match(payload.text, /주택 추가 추천/);
+  assert.match(payload.text, /주택 추천/);
   assert.equal(context.items.length, 1);
   assert.equal(context.items[0].domain, "housing");
+});
+
+test("executes globally interpreted recommendation navigation in the briefing app", async () => {
+  const context = { semantic: { route: "recommendations_list", domain: "housing" } };
+  assert.equal(briefingBotModule.canHandleMessage({}, context), true);
+  assert.equal(await briefingBotModule.handleMessage({ text: "주택 다 보여줘" }, context), true);
+  const row = platformDb.prepare("SELECT context_json FROM telegram_outbox ORDER BY id DESC LIMIT 1").get();
+  assert.equal(JSON.parse(row.context_json).domain, "housing");
+});
+
+test("keeps Inbox actions replyable without adding action buttons", async () => {
+  const inbox = createInboxItem({
+    kind: "task", title: "보험 갱신", nextAction: "보험사 전화",
+    sourceMessageId: 9901,
+  });
+  setPlatformSetting("morning_briefing_housing_signature", "");
+  setPlatformSetting("morning_briefing_jobs_signature", "");
+  const delivered = await sendMorningBriefing({ now: new Date("2026-07-21T00:00:00.000Z") });
+  const row = platformDb.prepare("SELECT payload_json, context_json FROM telegram_outbox WHERE message_id=?").get(delivered.message_id);
+  const payload = JSON.parse(row.payload_json);
+  const context = JSON.parse(row.context_json);
+  const inboxContext = context.items.find((item) => item.domain === "inbox");
+  assert.equal(inboxContext.id, inbox.id);
+  assert.match(payload.text, /보험사 전화/);
+  assert.equal(payload.reply_markup.inline_keyboard.some((buttons) => buttons[0].callback_data.includes(`:${inbox.id}`)), false);
+});
+
+test("does not repeat an Inbox event that already has the same approved reminder", () => {
+  const inbox = createInboxItem({
+    kind: "event", title: "중복 방지 일정", nextAction: "참석",
+    eventAt: "2026-07-21T06:00:00.000Z", sourceMessageId: 9902,
+  });
+  const reminder = createReminder({
+    title: inbox.title, dueAt: inbox.event_at, module: "global", entityKey: `inbox:${inbox.id}`,
+  });
+  setReminderStatus(reminder.id, "approved");
+  const snapshot = morningBriefingSnapshot({ now: new Date("2026-07-21T00:00:00.000Z") });
+  assert.equal(snapshot.actions.some((item) => item.title === inbox.title), true);
+  assert.equal(snapshot.inbox.some((item) => item.id === inbox.id), false);
 });

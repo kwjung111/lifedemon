@@ -54,6 +54,16 @@ test("requires both the private chat and authorized user", async () => {
   assert.equal(sent.length, 0);
 });
 
+test("routes captionless attachments to modules", async () => {
+  const { bot, sent, logs } = runtime({ handled: true });
+  await bot.handleMessage({
+    message_id: 15, chat: { id: 1, type: "private" }, from: { id: 1 },
+    document: { file_id: "file-1", file_name: "note.pdf" },
+  });
+  assert.equal(sent.length, 0);
+  assert.equal(logs[0][1].module, "test");
+});
+
 test("does not commit a failed update before processing succeeds", async () => {
   const transitions = [];
   let shouldFail = true;
@@ -72,4 +82,78 @@ test("does not commit a failed update before processing succeeds", async () => {
   shouldFail = false;
   await bot.handleUpdate(update);
   assert.deepEqual(transitions.at(-1), ["done", 99]);
+});
+
+test("routes reply context before broad keyword handlers", async () => {
+  const routed = [];
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [
+      { id: "feedback", handleMessage: async () => { routed.push("feedback"); return true; } },
+      {
+        id: "inbox",
+        canHandleMessage: (_message, context) => context?.domain === "inbox",
+        handleMessage: async () => { routed.push("inbox"); return true; },
+      },
+    ],
+    messageContext: () => ({ domain: "inbox", entityId: 7 }),
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({
+    message_id: 21, chat: { id: 1, type: "private" }, from: { id: 1 }, text: "방금 거 취소",
+    reply_to_message: { message_id: 20 },
+  });
+  assert.deepEqual(routed, ["inbox"]);
+});
+
+test("interprets free-form text exactly once and forwards only the structured result", async () => {
+  let interpretations = 0;
+  let receivedContext = null;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{
+      id: "semantic",
+      canHandleMessage: (_message, context) => context?.semantic?.route === "job_status",
+      handleMessage: async (_message, context) => { receivedContext = context; return true; },
+    }],
+    interpretMessage: async () => {
+      interpretations += 1;
+      return { route: "job_status", domain: "jobs", confidence: 99 };
+    },
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "지원 현황 알려줘" });
+  assert.equal(interpretations, 1);
+  assert.equal(receivedContext.semantic.route, "job_status");
+});
+
+test("does not execute a module when the global interpreter fails", async () => {
+  const sent = [];
+  let executed = false;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async (text) => sent.push(text),
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{ id: "unsafe-fallback", handleMessage: async () => { executed = true; return true; } }],
+    interpretMessage: async () => { throw new Error("AI unavailable"); },
+    loadOffset: () => 0, saveOffset: () => null,
+    log: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "이거 처리해" });
+  assert.equal(executed, false);
+  assert.match(sent[0], /아무 작업도 실행하지 않았어요/);
+});
+
+test("keeps fixed slash commands deterministic without an interpretation call", async () => {
+  let interpretations = 0;
+  const bot = createBotRuntime({
+    telegram: async () => [], sendMessage: async () => null,
+    allowedChatId: "1", allowedUserId: "1",
+    modules: [{ id: "help", handleMessage: async () => true }],
+    interpretMessage: async () => { interpretations += 1; return { route: "not_supported" }; },
+    loadOffset: () => 0, saveOffset: () => null,
+  });
+  await bot.handleMessage({ chat: { id: 1, type: "private" }, from: { id: 1 }, text: "/help" });
+  assert.equal(interpretations, 0);
 });

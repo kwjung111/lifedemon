@@ -9,6 +9,8 @@ export function createBotRuntime({
   completeUpdate = () => null,
   failUpdate = () => ({ status: "pending", attempts: 1 }),
   allowedUserId = allowedChatId,
+  messageContext = () => null,
+  interpretMessage = null,
   log = console.log,
 }) {
   const allowedChat = String(allowedChatId);
@@ -39,22 +41,47 @@ export function createBotRuntime({
 
   async function handleMessage(message) {
     if (!authorized(message)) return;
-    const text = String(message.text || "").trim();
-    if (!text) return;
+    const text = String(message.text || message.caption || "").trim();
+    const hasAttachment = Boolean(message.document || message.photo || message.video || message.voice);
+    if (!text && !hasAttachment) return;
     const routeMeta = {
       messageId: message.message_id || null,
       replyToMessageId: message.reply_to_message?.message_id || null,
       itemNumber: Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0) || null,
     };
 
-    if (/^\/help(?:@\w+)?$/i.test(text)) {
-      const help = modules.map((module) => module.help).filter(Boolean).join("\n\n");
-      await sendMessage(`사용 가능한 알림\n\n${help}`);
-      return;
+    const baseContext = routeMeta.replyToMessageId ? messageContext(routeMeta.replyToMessageId) : null;
+    const command = text.startsWith("/")
+      ? text.slice(1).split(/\s/, 1)[0].split("@", 1)[0].toLowerCase()
+      : null;
+    const fixedCommands = new Set([
+      "start", "help", "manual", "briefing", "inbox", "reminders", "calendar", "calendar_status",
+      "housing", "housing_status", "housing_guide", "housing_instructions", "housing_rules", "rules",
+      "jobs", "job_status", "jobs_status", "feedback", "feedback_rules", "daemon", "system", "ask",
+    ]);
+    const strictReminderCommand = command === "remind"
+      && /^\/remind(?:@\w+)?\s+20\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+\S/.test(text);
+    let semantic = null;
+    if (interpretMessage && !strictReminderCommand && (!command || !fixedCommands.has(command))) {
+      try {
+        telegram("sendChatAction", { chat_id: message.chat.id, action: "typing" }).catch(() => {});
+        semantic = await interpretMessage(message, baseContext);
+      } catch (error) {
+        log("Telegram message interpretation failed", { ...routeMeta, error: error.message });
+        await sendMessage("자연어 해석기가 잠시 응답하지 않아 아무 작업도 실행하지 않았어요. 잠시 후 다시 보내 주세요.");
+        return;
+      }
+      if (semantic.route === "not_supported") {
+        await sendMessage(semantic.clarification || "요청을 확실히 이해하지 못했어요. 조금만 더 구체적으로 말해 주세요.");
+        log("Telegram message needs clarification", { ...routeMeta, route: semantic.route });
+        return;
+      }
     }
-
-    for (const module of modules) {
-      if (await module.handleMessage(message)) {
+    const context = semantic ? { ...(baseContext || {}), semantic } : baseContext;
+    const priority = modules.filter((module) => module.canHandleMessage?.(message, context));
+    const orderedModules = [...priority, ...modules.filter((module) => !priority.includes(module))];
+    for (const module of orderedModules) {
+      if (await module.handleMessage(message, context)) {
         log("Telegram message routed", { ...routeMeta, module: module.id });
         return;
       }
@@ -68,7 +95,7 @@ export function createBotRuntime({
       await sendMessage("답장한 메시지가 저장된 공고 브리핑과 연결되지 않았습니다. 번호가 붙은 공고 목록 말풍선 자체에 답장해 주세요.");
       return;
     }
-    await sendMessage("어떤 알림에 대한 요청인지 확인하지 못했습니다. /help를 보내 사용법을 확인해 주세요.");
+    await sendMessage("요청을 이해하지 못했어요. /help에서 가장 쉬운 사용법을 확인해 주세요.");
   }
 
   async function handleUpdate(update) {

@@ -1,5 +1,83 @@
 # Changelog
 
+## 1.17.0 - 2026-07-21
+
+### Added
+
+- Added natural `왜 안 보여?` explanations for job and housing recommendations.
+- Distinguished applied, ignored, durable-rule, inactive, duplicate, expired, pending-review, failed-review, filter-excluded, and already-visible states from persisted evidence.
+- Kept explanation messages replyable so an incorrect applied/ignored action can be undone without another menu or button.
+
+### Safety
+
+- AI identifies only the requested domain and posting phrase; exclusion reasons are computed deterministically from current databases and recommendation snapshots.
+- Ambiguous names produce one numbered clarification and unknown postings never receive an invented explanation.
+
+## 1.16.0 - 2026-07-21
+
+### Changed
+
+- Unified all free-form Telegram intent, target, feedback, Inbox, reminder, tracking, navigation, and manager routing into one bounded structured AI interpretation call.
+- Kept fixed slash commands and callback protocols deterministic and removed per-module semantic parsers and regex fallbacks.
+- Consolidated recommendation-list execution into the briefing app and documented the AI/code responsibility boundary.
+
+### Fixed
+
+- Prevented low-confidence or unavailable interpretation from mutating state, while retaining reply context and concise clarification.
+
+## 1.15.0 - 2026-07-21
+
+### Added
+
+- Added a bounded AI navigation-intent router for free-form job and housing recommendation requests and contextual next-page replies.
+
+### Changed
+
+- Removed phrase-regex routing for natural recommendation-list requests; fixed slash commands remain deterministic and free-text navigation now uses Structured Outputs with confidence and domain checks.
+- Navigation AI uses the linked Codex account first and the existing capped API fallback policy only for recognized quota or authentication failures.
+
+## 1.14.1 - 2026-07-21
+
+### Fixed
+
+- Natural list requests such as `채용 다 보여줘`, `채용 전체 목록 보여줘`, and punctuation variants now route to job recommendations.
+- Replying `더 보여줘` to a job or housing recommendation list now advances to the next page instead of repeating or falling through.
+- Recommendation pages now show their current range and total while remaining bounded to one Telegram message at a time.
+
+## 1.14.0 - 2026-07-20
+
+### Added
+
+- Added a one-screen Telegram manual, a separate detailed command view, and a Korean user guide.
+- Added replyable/paged Inbox lists, numbered completion/correction/cancellation, stored-link access, and Telegram attachment re-sending.
+- Added realistic UX regression coverage for reply-context priority, paging, stale actions, invalid dates, and the seven-command menu.
+
+### Changed
+
+- Reduced the visible Telegram command menu from fourteen entries to seven common actions while keeping advanced commands available.
+- Reply context now takes precedence over broad reminder, feedback, briefing, and manager keyword routes.
+- Inbox events explicitly state that timed reminders are not registered; users may request one from the confirmation reply.
+- Morning briefings rank non-stale Inbox actions and retain Inbox reply targets without adding buttons.
+
+### Fixed
+
+- Rejected impossible calendar dates instead of allowing JavaScript date rollover.
+- Prevented unfinished reminder clarification from consuming unrelated messages or attachments.
+- Prevented old events and far-future events from permanently hiding recent undated tasks.
+
+## 1.13.0 - 2026-07-20
+
+### Added
+
+- Added a modular Life Inbox for command-free events, tasks, links, notes, and Telegram attachment metadata.
+- Added assumption-visible saves, conclusion-first single-message confirmations, explicit next actions, natural reply corrections/completion/cancellation, and natural feedback capture.
+- Added app-owned item revision history and rules-vs-AI classifier usage telemetry.
+
+### Changed
+
+- The Telegram runtime now routes captions and captionless supported attachments, with Life Inbox registered last so existing reminder, briefing, housing, job, feedback, and manager semantics keep precedence.
+- The weekday morning briefing includes at most three active Life Inbox next actions inside the existing single message.
+
 ## 1.12.0 - 2026-07-20
 
 ### Added

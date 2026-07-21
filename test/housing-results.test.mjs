@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-results-"));
+process.env.MONITOR_DATA_DIR = dataDir;
 process.env.HOUSING_DATA_DIR = dataDir;
 process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.TELEGRAM_CHAT_ID = "1";
@@ -20,11 +21,12 @@ const {
   upsertNotice,
 } = await import("../src/db.mjs");
 const { housingResultKeywords, runHousingResultChecks } = await import("../src/apps/housing/result-checker.mjs");
-const { parseHousingResultFeedback } = await import("../src/apps/housing/result-feedback.mjs");
 const { rankHousingCandidates } = await import("../src/report.mjs");
+const { platformDb } = await import("../src/core/state.mjs");
 
 test.after(() => {
   db.close();
+  platformDb.close();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -62,16 +64,6 @@ test("prompts once after finding an official result and stops after outcome reco
   assert.equal(appliedNotices().length, 0);
   assert.equal(recentApplicationResults()[0].supply_units, 21);
   assert.equal(db.prepare("SELECT applied_at FROM applications WHERE notice_id=?").get(id).applied_at, originalAppliedAt);
-});
-
-test("parses the supplied cutoff and recommendation feedback", () => {
-  const parsed = parseHousingResultFeedback("서류심사 대상 미선정\n지원 주택: 테스트구 샘플하우스 39A\n컷라인: 2순위 7점, 50호 공급\n다음 추천 기준: 공급 규모와 후순위 도달 여부를 우선 추천");
-  assert.equal(parsed.outcome, "not_selected");
-  assert.equal(parsed.housingName, "테스트구 샘플하우스 39A");
-  assert.equal(parsed.cutoffPriority, 2);
-  assert.equal(parsed.cutoffScore, 7);
-  assert.equal(parsed.supplyUnits, 50);
-  assert.match(parsed.preference, /후순위/);
 });
 
 test("ranks evidenced second- and third-priority supply ahead when feedback enables it", () => {

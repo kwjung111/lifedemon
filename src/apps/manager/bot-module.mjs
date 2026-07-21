@@ -1,6 +1,6 @@
 import { sendMessage, telegram } from "../../telegram.mjs";
 import { buildSystemSnapshot } from "./snapshot.mjs";
-import { answerManagerQuestion, looksLikeManagerQuestion } from "./query.mjs";
+import { answerManagerQuestion } from "./query.mjs";
 import { askManagerConversation } from "./conversation.mjs";
 
 function stripCommand(text) {
@@ -22,19 +22,26 @@ export function createManagerBotModule({
       { command: "ask", description: "🧭 Life Daemon에 자연어로 질문" },
     ],
 
-    async handleMessage(message) {
+    canHandleMessage(message, context) {
       const text = String(message.text || "").trim();
-      if (!looksLikeManagerQuestion(text)) return false;
-      const rawQuestion = stripCommand(text) || "전체 시스템 상태와 최근 수집 시각을 알려줘";
-      const isAsk = /^\/ask(?:@\w+)?(?:\s|$)/i.test(text);
+      const command = text.startsWith("/") ? text.slice(1).split(/\s/, 1)[0].split("@", 1)[0].toLowerCase() : null;
+      return ["daemon", "system", "ask"].includes(command) || context?.semantic?.route === "manager_question";
+    },
+
+    async handleMessage(message, routedContext = null) {
+      const text = String(message.text || "").trim();
+      const command = text.startsWith("/") ? text.slice(1).split(/\s/, 1)[0].split("@", 1)[0].toLowerCase() : null;
+      const semantic = routedContext?.semantic;
+      if (!["daemon", "system", "ask"].includes(command) && semantic?.route !== "manager_question") return false;
+      const rawQuestion = semantic?.question || stripCommand(text) || "전체 시스템 상태와 최근 수집 시각을 알려줘";
+      const isAsk = command === "ask";
       const replyContext = message.reply_to_message?.from?.is_bot
         ? String(message.reply_to_message.text || "").trim().slice(0, 2500)
         : "";
-      const isFollowUp = /^(?:그거|그건|왜|원인|자세히|로그|그러면|그래서|어떻게)/.test(rawQuestion);
       const recentContext = lastExchange && Date.now() - lastExchange.at < 15 * 60_000
         ? `${lastExchange.question}\n${lastExchange.answer}`.slice(-2500)
         : "";
-      const context = replyContext || (isFollowUp ? recentContext : "");
+      const context = replyContext || (semantic?.followUp ? recentContext : "");
       const question = context
         ? `이전 대화:\n${context}\n\n현재 질문:\n${rawQuestion}`
         : rawQuestion;
