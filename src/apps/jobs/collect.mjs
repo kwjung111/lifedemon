@@ -1,5 +1,5 @@
 import { collectAllPublicJobSources } from "./collectors.mjs";
-import { markJobSourceComplete, setJobSetting, upsertJobPostingWithStatus } from "./db.mjs";
+import { markJobSourceComplete, queueStaleWantedAssessments, setJobSetting, upsertJobPostingWithStatus } from "./db.mjs";
 import { jobDiscoveryQueries, loadJobProfile } from "./profile.mjs";
 
 export async function collectJobs(options = {}) {
@@ -16,6 +16,9 @@ export async function collectJobs(options = {}) {
       deactivatedCount,
     };
   });
+  const periodicReviewCount = queueStaleWantedAssessments();
+  const wanted = summary.find((entry) => entry.source === "wanted");
+  if (wanted) wanted.periodicReviewCount = periodicReviewCount;
   const completedAt = new Date().toISOString();
   setJobSetting("job_collection_last_attempt_at", completedAt);
   setJobSetting("job_collection_last_summary", JSON.stringify({ completedAt, summary }));

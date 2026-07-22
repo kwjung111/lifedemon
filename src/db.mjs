@@ -367,6 +367,10 @@ export function markSourceCollectionComplete(source, activeIds) {
   `).run(source, ...ids).changes;
 }
 
+export function markSourceCollectionEmpty(source) {
+  return db.prepare("UPDATE notices SET active=0 WHERE source=? AND active=1").run(source).changes;
+}
+
 export function activeNotices() {
   const { fingerprint } = syncHousingProfile();
   return db.prepare(`
@@ -696,6 +700,28 @@ export function exhaustedReviewCount() {
     FROM review_queue q JOIN notices n ON n.id=q.notice_id
     WHERE q.state='error' AND q.attempts>=3 AND n.active=1
   `).get().count;
+}
+
+export function housingReviewQueueHealth() {
+  const { fingerprint } = syncHousingProfile();
+  recoverStaleReviewClaims();
+  const counts = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN q.state='pending' THEN 1 ELSE 0 END), 0) AS pending,
+      COALESCE(SUM(CASE WHEN q.state='reviewing' THEN 1 ELSE 0 END), 0) AS reviewing,
+      COALESCE(SUM(CASE WHEN q.state='error' AND q.attempts<3 THEN 1 ELSE 0 END), 0) AS retryableErrors,
+      COALESCE(SUM(CASE WHEN q.state='error' AND q.attempts>=3 THEN 1 ELSE 0 END), 0) AS terminalErrors
+    FROM notices n LEFT JOIN review_queue q ON q.notice_id=n.id
+    WHERE n.active=1 AND n.verdict IN ('likely', 'possible')
+  `).get();
+  const staleReviews = db.prepare(`
+    SELECT count(*) AS count
+    FROM notices n LEFT JOIN notice_reviews r ON r.notice_id=n.id
+      AND r.content_hash=n.content_hash AND r.profile_fingerprint=? AND r.policy_version=?
+    WHERE n.active=1 AND n.verdict IN ('likely', 'possible') AND r.notice_id IS NULL
+  `).get(fingerprint, HOUSING_REVIEW_POLICY_VERSION).count;
+  const result = { ...counts, staleReviews };
+  return { ...result, ready: Object.values(result).every((value) => Number(value) === 0) };
 }
 
 export function markReviewing(noticeIdValue) {

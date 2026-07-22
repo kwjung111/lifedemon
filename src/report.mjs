@@ -154,7 +154,7 @@ export async function sendDailyReport(summary = [], reviewSummary = []) {
   const failedReviews = reviewSummary.filter((item) => item.error && !item.deferred).length;
   const counts = sourceOrder.map((source) => {
     const item = summary.find((entry) => entry.source === source);
-    return `${source} ${item?.error ? "오류" : item?.count ?? 0}`;
+    return `${source} ${item?.error ? "오류" : item?.status === "empty" ? "공고 없음" : item?.count ?? 0}`;
   }).join(" · ");
   const newCount = summary.reduce((total, item) => total + (item.newCount || 0), 0);
   const changedCount = summary.reduce((total, item) => total + (item.changedCount || 0), 0);
