@@ -163,7 +163,7 @@ JobKorea는 로그인 없이 공개 검색·상세 페이지를 사용합니다.
 
 첫 검색은 서버의 ChatGPT 연동 Codex 로그인을 사용합니다. 사용량 또는 인증 한도 오류가 발생했을 때만 `CODEX_API_FALLBACK_ENABLED=true`이고 `CODEX_API_FALLBACK_KEY` 또는 `OPENAI_API_KEY`가 설정된 경우 API로 한 번 더 시도합니다. `CODEX_API_DAILY_CALL_LIMIT`은 프로세스 전체의 일일 대체 호출 횟수를 제한하며, 그날 처음 전환할 때 Telegram 비용 알림을 대기열에 넣습니다. Gmail은 보조 발견 경로입니다. 읽기 전용 `BOT/Wanted` 라벨에서 찾은 URL을 같은 실시간 검증 과정에 넣지만 Gmail 지연이나 누락이 웹 검색을 막지는 않습니다.
 
-운영 `jobs-daily.timer`는 07:40 KST에 데이터를 준비하고 `morning-briefing.timer`는 09:00 KST에 통합 메시지를 보냅니다. 비공개 프로필, 기업 검증 데이터, Codex 로그인과 선택적인 Gmail 인증정보를 Git 밖에 준비한 뒤 설치하세요.
+운영 `jobs-daily.timer`는 07:40 KST에 데이터를 준비합니다. 채용 AI 판정은 메모리 사용을 제한하기 위해 100건씩 나누되, 활성 대기열이 빌 때까지 같은 실행에서 계속 처리합니다. `morning-briefing.timer`는 09:00 KST에 통합 메시지를 보냅니다. 비공개 프로필, 기업 검증 데이터, Codex 로그인과 선택적인 Gmail 인증정보를 Git 밖에 준비한 뒤 설치하세요.
 
 JobPlanet 기업 검증은 설정한 계정(`JOBPLANET_ID`, `JOBPLANET_PASSWORD`)과 Git에서 제외된 Playwright 저장 상태 파일(`JOBPLANET_STORAGE_STATE_FILE`)을 사용합니다. 일일 파이프라인은 필터링 전에 활성 기업의 평점과 인원수를 갱신합니다. 인증정보, 쿠키와 저장 상태 파일을 커밋하지 마세요. 검증 자료가 없거나 평점·인원수가 설정 기준보다 낮으면 자동 제외합니다.
 

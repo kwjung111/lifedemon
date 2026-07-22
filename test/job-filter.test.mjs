@@ -18,7 +18,7 @@ writeFileSync(companyFile, JSON.stringify([{ company: "좋은회사", jobplanetR
 
 const { companyGate, loadAuthorizedCompanyVerifications } = await import("../src/apps/jobs/company-verification.mjs");
 const { jobDb, pendingJobFilters, upsertJobPosting } = await import("../src/apps/jobs/db.mjs");
-const { filterJobs, normalizeJobAssessment } = await import("../src/apps/jobs/filter.mjs");
+const { drainJobFilters, filterJobs, normalizeJobAssessment } = await import("../src/apps/jobs/filter.mjs");
 const { jobDiscoveryQueries, jobProfileFingerprint, loadJobProfile } = await import("../src/apps/jobs/profile.mjs");
 
 test.after(() => { jobDb.close(); rmSync(dataDir, { recursive: true, force: true }); });
@@ -65,6 +65,23 @@ test("rechecks active postings after authorized company verification data change
     return { decision: "pass", summary: "재평가", reasons: [], concerns: [], evidence: [] };
   } });
   assert.ok(prompts.length >= 2);
+  assert.equal(pendingJobFilters().length, 0);
+});
+
+test("drains every active pending job across bounded batches", async () => {
+  for (let index = 0; index < 5; index += 1) {
+    upsertJobPosting({
+      source: "fixture",
+      company: `미검증회사${index}`,
+      title: "DevOps Engineer",
+      url: `https://example.test/drain-${index}`,
+      rawText: "Kubernetes",
+    });
+  }
+  const output = await drainJobFilters({ batchSize: 2, assess: async () => {
+    throw new Error("미검증 회사는 AI 호출 전에 제외되어야 함");
+  } });
+  assert.equal(output.length, 5);
   assert.equal(pendingJobFilters().length, 0);
 });
 
