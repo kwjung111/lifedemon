@@ -34,7 +34,7 @@ test("reports strict verification status without exposing private profile", () =
 });
 
 test("classifies new, unchanged, and changed jobs for collection telemetry", () => {
-  const fixture = { source: "wanted", company: "계측회사", title: "Platform Engineer", url: "https://www.wanted.co.kr/wd/9901", rawText: "AWS" };
+  const fixture = { source: "remember", company: "계측회사", title: "Platform Engineer", url: "https://career.rememberapp.co.kr/job/posting/9901", rawText: "주요업무 AWS 운영" };
   assert.equal(upsertJobPostingWithStatus(fixture).change, "new");
   assert.equal(upsertJobPostingWithStatus(fixture).change, "unchanged");
   assert.equal(upsertJobPostingWithStatus({ ...fixture, rawText: "AWS Kubernetes" }).change, "changed");

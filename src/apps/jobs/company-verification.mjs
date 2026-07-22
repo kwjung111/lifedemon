@@ -38,7 +38,10 @@ export function companyGate(company, profile, verifications) {
 
 export function companyVerificationFingerprint(verifications) {
   const canonical = [...verifications.values()]
-    .map(({ company, jobplanetRating, employeeCount, provenance, verifiedAt }) => ({ company, jobplanetRating, employeeCount, provenance, verifiedAt }))
+    // A refresh timestamp is audit metadata, not a filtering input. Including it
+    // would requeue every active posting once a day even when the rating and size
+    // stayed exactly the same.
+    .map(({ company, jobplanetRating, employeeCount, provenance }) => ({ company, jobplanetRating, employeeCount, provenance }))
     .sort((a, b) => a.company.localeCompare(b.company));
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 24);
 }

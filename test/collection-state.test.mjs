@@ -6,7 +6,7 @@ import test from "node:test";
 
 const dataDir = mkdtempSync(join(tmpdir(), "lifedemon-collection-"));
 process.env.HOUSING_DATA_DIR = dataDir;
-const { db, exhaustedReviewCount, markSourceCollectionComplete, upsertNotice, upsertNoticeWithStatus } = await import("../src/db.mjs");
+const { db, exhaustedReviewCount, markSourceCollectionComplete, markSourceCollectionEmpty, upsertNotice, upsertNoticeWithStatus } = await import("../src/db.mjs");
 
 function notice(id, source = "마이홈 API") {
   return {
@@ -49,6 +49,14 @@ test("does not treat a zero-result scrape as proof that all notices closed", () 
   upsertNotice(notice("zero-safe", "HUG"));
   assert.equal(markSourceCollectionComplete("HUG", []), 0);
   assert.equal(db.prepare("SELECT active FROM notices WHERE id='zero-safe'").get().active, 1);
+});
+
+test("deactivates only the source covered by an officially confirmed empty result", () => {
+  upsertNotice(notice("empty-hug", "HUG-confirmed"));
+  upsertNotice(notice("keep-youth", "청년안심주택"));
+  assert.equal(markSourceCollectionEmpty("HUG-confirmed"), 1);
+  assert.equal(db.prepare("SELECT active FROM notices WHERE id='empty-hug'").get().active, 0);
+  assert.equal(db.prepare("SELECT active FROM notices WHERE id='keep-youth'").get().active, 1);
 });
 
 test("counts active reviews that exhausted all retries", () => {

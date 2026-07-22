@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { semanticPreferenceScore } from "../feedback/preferences.mjs";
+import { jobContentHash } from "./content.mjs";
 
 const dataDir = process.env.JOB_DATA_DIR || "/data/crawler/data";
 mkdirSync(dataDir, { recursive: true });
@@ -48,7 +49,6 @@ if (!applicationColumns.has("recommendation_hidden")) {
 
 const now = () => new Date().toISOString();
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
-const hashFor = (job) => createHash("sha256").update(JSON.stringify({ company: clean(job.company), title: clean(job.title), url: job.url, raw: clean(job.rawText) })).digest("hex").slice(0, 32);
 export const jobId = (source, url) => createHash("sha256").update(`${source}\n${url}`).digest("hex").slice(0, 24);
 
 export function upsertJobPostingWithStatus(job) {
@@ -56,26 +56,39 @@ export function upsertJobPostingWithStatus(job) {
   const id = job.id || jobId(job.source, job.url);
   const timestamp = now();
   const rawText = clean(job.rawText).slice(0, 60_000);
-  const contentHash = hashFor({ ...job, rawText });
-  const previous = jobDb.prepare("SELECT content_hash FROM job_postings WHERE id=?").get(id);
-  jobDb.prepare(`
-    INSERT INTO job_postings(id, source, external_id, company, title, url, location, experience, raw_text, content_hash, active, first_seen, last_seen)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET external_id=excluded.external_id, company=excluded.company, title=excluded.title,
-      url=excluded.url, location=excluded.location, experience=excluded.experience, raw_text=excluded.raw_text,
-      content_hash=excluded.content_hash, active=1, last_seen=excluded.last_seen
-  `).run(id, job.source, job.externalId || null, clean(job.company), clean(job.title), job.url, clean(job.location) || null,
-    clean(job.experience) || null, rawText, contentHash, timestamp, timestamp);
-  if (!previous || previous.content_hash !== contentHash) {
+  const contentHash = jobContentHash({ ...job, rawText });
+  const previous = jobDb.prepare("SELECT * FROM job_postings WHERE id=?").get(id);
+  const previousStableHash = previous ? jobContentHash(previous) : null;
+  const changed = !previous || previousStableHash !== contentHash;
+  jobDb.exec("BEGIN IMMEDIATE");
+  try {
     jobDb.prepare(`
-      INSERT INTO job_filter_queue(posting_id, state, reason, attempts, created_at, updated_at)
-      VALUES (?, 'pending', ?, 0, ?, ?)
-      ON CONFLICT(posting_id) DO UPDATE SET state='pending', reason=excluded.reason, attempts=0, last_error=NULL, updated_at=excluded.updated_at
-    `).run(id, previous ? "changed" : "new", timestamp, timestamp);
+      INSERT INTO job_postings(id, source, external_id, company, title, url, location, experience, raw_text, content_hash, active, first_seen, last_seen)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET external_id=excluded.external_id, company=excluded.company, title=excluded.title,
+        url=excluded.url, location=excluded.location, experience=excluded.experience, raw_text=excluded.raw_text,
+        content_hash=excluded.content_hash, active=1, last_seen=excluded.last_seen
+    `).run(id, job.source, job.externalId || null, clean(job.company), clean(job.title), job.url, clean(job.location) || null,
+      clean(job.experience) || null, rawText, contentHash, timestamp, timestamp);
+    if (previous && !changed && previous.content_hash !== contentHash) {
+      jobDb.prepare("UPDATE job_assessments SET content_hash=? WHERE posting_id=? AND content_hash=?")
+        .run(contentHash, id, previous.content_hash);
+    }
+    if (changed) {
+      jobDb.prepare(`
+        INSERT INTO job_filter_queue(posting_id, state, reason, attempts, created_at, updated_at)
+        VALUES (?, 'pending', ?, 0, ?, ?)
+        ON CONFLICT(posting_id) DO UPDATE SET state='pending', reason=excluded.reason, attempts=0, last_error=NULL, updated_at=excluded.updated_at
+      `).run(id, previous ? "changed" : "new", timestamp, timestamp);
+    }
+    jobDb.exec("COMMIT");
+  } catch (error) {
+    jobDb.exec("ROLLBACK");
+    throw error;
   }
   return {
     id,
-    change: !previous ? "new" : previous.content_hash !== contentHash ? "changed" : "unchanged",
+    change: !previous ? "new" : changed ? "changed" : "unchanged",
   };
 }
 
@@ -89,6 +102,19 @@ export function markJobSourceComplete(source, activeIds) {
   return jobDb.prepare(`UPDATE job_postings SET active=0 WHERE source=? AND id NOT IN (${ids.map(() => "?").join(",")})`).run(source, ...ids).changes;
 }
 
+export function queueStaleWantedAssessments(maxAgeMs = 7 * 24 * 60 * 60_000) {
+  const cutoff = new Date(Date.now() - Math.max(0, maxAgeMs)).toISOString();
+  const timestamp = now();
+  return jobDb.prepare(`
+    INSERT INTO job_filter_queue(posting_id, state, reason, attempts, created_at, updated_at)
+    SELECT p.id, 'pending', 'periodic_refresh', 0, ?, ?
+    FROM job_postings p JOIN job_assessments a ON a.posting_id=p.id
+    WHERE p.active=1 AND p.source='wanted' AND a.assessed_at<=?
+    ON CONFLICT(posting_id) DO UPDATE SET state='pending', reason='periodic_refresh', attempts=0,
+      last_error=NULL, updated_at=excluded.updated_at
+  `).run(timestamp, timestamp, cutoff).changes;
+}
+
 export function getJobSetting(key, fallback = null) {
   return jobDb.prepare("SELECT value FROM job_settings WHERE key=?").get(key)?.value ?? fallback;
 }
@@ -98,10 +124,40 @@ export function setJobSetting(key, value) {
 }
 
 export function pendingJobFilters(limit = 100) {
+  recoverStaleJobFilterClaims();
   return jobDb.prepare(`
     SELECT p.*, q.reason AS queue_reason FROM job_filter_queue q JOIN job_postings p ON p.id=q.posting_id
     WHERE p.active=1 AND q.state IN ('pending','error') AND q.attempts<3 ORDER BY q.updated_at ASC LIMIT ?
   `).all(limit);
+}
+
+export function recoverStaleJobFilterClaims(maxAgeMs = 60 * 60_000) {
+  const cutoff = new Date(Date.now() - Math.max(0, maxAgeMs)).toISOString();
+  return jobDb.prepare(`
+    UPDATE job_filter_queue SET state='error', last_error='job filter worker lease expired', updated_at=?
+    WHERE state='reviewing' AND updated_at<=?
+  `).run(now(), cutoff).changes;
+}
+
+export function jobFilterQueueHealth(profileFingerprint, verificationFingerprint) {
+  recoverStaleJobFilterClaims();
+  const counts = jobDb.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN q.state='pending' THEN 1 ELSE 0 END), 0) AS pending,
+      COALESCE(SUM(CASE WHEN q.state='reviewing' THEN 1 ELSE 0 END), 0) AS reviewing,
+      COALESCE(SUM(CASE WHEN q.state='error' AND q.attempts<3 THEN 1 ELSE 0 END), 0) AS retryableErrors,
+      COALESCE(SUM(CASE WHEN q.state='error' AND q.attempts>=3 THEN 1 ELSE 0 END), 0) AS terminalErrors
+    FROM job_postings p LEFT JOIN job_filter_queue q ON q.posting_id=p.id
+    WHERE p.active=1
+  `).get();
+  const staleAssessments = jobDb.prepare(`
+    SELECT count(*) AS count
+    FROM job_postings p LEFT JOIN job_assessments a ON a.posting_id=p.id
+      AND a.content_hash=p.content_hash AND a.profile_fingerprint=? AND a.verification_fingerprint=?
+    WHERE p.active=1 AND a.posting_id IS NULL
+  `).get(profileFingerprint, verificationFingerprint).count;
+  const result = { ...counts, staleAssessments };
+  return { ...result, ready: Object.values(result).every((value) => Number(value) === 0) };
 }
 
 export function syncJobFilterInputs(profileFingerprint, verificationFingerprint) {
