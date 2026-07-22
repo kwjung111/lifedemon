@@ -1,3 +1,3 @@
-import { filterJobs } from "../apps/jobs/filter.mjs";
+import { drainJobFilters } from "../apps/jobs/filter.mjs";
 
-console.log(JSON.stringify(await filterJobs(), null, 2));
+console.log(JSON.stringify(await drainJobFilters(), null, 2));

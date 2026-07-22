@@ -60,3 +60,14 @@ export async function filterJobs({ limit = 100, assess = runCodex } = {}) {
   }
   return results;
 }
+
+export async function drainJobFilters({ batchSize = 100, assess = runCodex } = {}) {
+  const size = Math.max(1, Math.floor(Number(batchSize) || 100));
+  const results = [];
+  while (true) {
+    const batch = await filterJobs({ limit: size, assess });
+    results.push(...batch);
+    if (!pendingJobFilters(1).length) return results;
+    if (!batch.length) throw new Error("job filter queue did not make progress");
+  }
+}
