@@ -28,21 +28,61 @@ function dday(date) {
   return `${date} (${days > 0 ? `D-${days}` : `D+${Math.abs(days)}`})`;
 }
 
+export function housingStatusPayload(applied = [], results = []) {
+  const items = [];
+  const byId = new Map();
+  const register = (row) => {
+    const id = String(row.notice_id || row.id || "").trim();
+    if (!id) return null;
+    const existing = byId.get(id);
+    if (existing) {
+      if (row.housing_name) existing.title = row.housing_name;
+      return existing.index;
+    }
+    const item = {
+      index: items.length + 1,
+      id,
+      domain: "housing",
+      title: row.housing_name || row.title || null,
+      source: row.notice_source || row.source || null,
+      summary: noticeSummary(row),
+    };
+    items.push(item);
+    byId.set(id, item);
+    return item.index;
+  };
+  const lines = applied.map((notice) =>
+    `${register(notice)}. [${notice.source}] ${notice.title}\n   발표: ${dday(notice.effective_announcement_date)}`
+  );
+  const outcomeLabel = { selected: "선정", not_selected: "미선정", waitlisted: "예비", unknown: "확인 필요" };
+  const resultLines = results.map((result) =>
+    `${register(result)}. ${outcomeLabel[result.outcome] || result.outcome} · ${result.housing_name || result.title}${result.cutoff_priority ? `\n  컷라인 ${result.cutoff_priority}순위${result.cutoff_score != null ? ` ${result.cutoff_score}점` : ""}` : ""}`
+  );
+  return {
+    text: [
+      applied.length ? `📌 지원 진행 중\n\n${lines.join("\n\n")}` : null,
+      results.length ? `📊 최근 지원 결과\n\n${resultLines.join("\n\n")}` : null,
+    ].filter(Boolean).join("\n\n"),
+    context: { domain: "housing", kind: "status", items },
+  };
+}
+
+export function housingStatusContextFromText(text, applied = [], results = []) {
+  const source = String(text || "");
+  if (!source.includes("📌 지원 진행 중") && !source.includes("📊 최근 지원 결과")) return null;
+  const normalized = source.replace(/\s+/g, "");
+  const context = housingStatusPayload(applied, results).context;
+  const items = context.items.filter((item) => item.title
+    && normalized.includes(String(item.title).replace(/\s+/g, "")));
+  return items.length ? { ...context, items } : null;
+}
+
 export async function sendStatus() {
   const applied = appliedNotices();
   const results = recentApplicationResults(5);
   if (!applied.length && !results.length) return sendMessage("현재 지원 또는 결과 이력이 없습니다.");
-  const lines = applied.map((notice, index) =>
-    `${index + 1}. [${notice.source}] ${notice.title}\n   발표: ${dday(notice.effective_announcement_date)}`
-  );
-  const outcomeLabel = { selected: "선정", not_selected: "미선정", waitlisted: "예비", unknown: "확인 필요" };
-  const resultLines = results.map((result) =>
-    `• ${outcomeLabel[result.outcome] || result.outcome} · ${result.housing_name || result.title}${result.cutoff_priority ? `\n  컷라인 ${result.cutoff_priority}순위${result.cutoff_score != null ? ` ${result.cutoff_score}점` : ""}` : ""}`
-  );
-  return sendMessage([
-    applied.length ? `📌 지원 진행 중\n\n${lines.join("\n\n")}` : null,
-    results.length ? `📊 최근 지원 결과\n\n${resultLines.join("\n\n")}` : null,
-  ].filter(Boolean).join("\n\n"));
+  const payload = housingStatusPayload(applied, results);
+  return sendMessage(payload.text, {}, { context: payload.context });
 }
 
 function resultPreferenceRank(notice, feedback) {
