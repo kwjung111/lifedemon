@@ -21,7 +21,10 @@ const {
   upsertNotice,
 } = await import("../src/db.mjs");
 const { housingResultKeywords, runHousingResultChecks } = await import("../src/apps/housing/result-checker.mjs");
-const { rankHousingCandidates } = await import("../src/report.mjs");
+const {
+  housingStatusContextFromText, housingStatusPayload, rankHousingCandidates,
+} = await import("../src/report.mjs");
+const { normalizeMessageInterpretation } = await import("../src/core/message-interpreter.mjs");
 const { platformDb } = await import("../src/core/state.mjs");
 
 test.after(() => {
@@ -64,6 +67,35 @@ test("prompts once after finding an official result and stops after outcome reco
   assert.equal(appliedNotices().length, 0);
   assert.equal(recentApplicationResults()[0].supply_units, 21);
   assert.equal(db.prepare("SELECT applied_at FROM applications WHERE notice_id=?").get(id).applied_at, originalAppliedAt);
+});
+
+test("makes housing status results replyable and recovers context for an older status message", () => {
+  const results = [{
+    notice_id: "result-status", notice_source: "SH", title: "청년주택 모집공고",
+    housing_name: "광진구 능동에스하임Ⅱ 25B", outcome: "not_selected",
+    cutoff_priority: 1, cutoff_score: 5,
+  }];
+  const payload = housingStatusPayload([], results);
+  assert.match(payload.text, /1\. 미선정 · 광진구 능동에스하임Ⅱ 25B/);
+  assert.deepEqual(payload.context.items, [{
+    index: 1, id: "result-status", domain: "housing",
+    title: "광진구 능동에스하임Ⅱ 25B", source: "SH", summary: null,
+  }]);
+
+  const recovered = housingStatusContextFromText(
+    "📊 최근 지원 결과\n\n• 미선정 · 광진구 능동에스하임Ⅱ 25B\n  컷라인 1순위 5점",
+    [],
+    results,
+  );
+  assert.equal(recovered.items[0].id, "result-status");
+  assert.equal(recovered.items[0].index, 1);
+
+  const interpreted = normalizeMessageInterpretation({
+    route: "housing_result", domain: "housing", confidence: 99,
+    reason: "결과 보고", outcome: "not_selected",
+  }, { text: "이거 떨어졌음" }, recovered);
+  assert.equal(interpreted.route, "housing_result");
+  assert.equal(interpreted.targetIndex, 1);
 });
 
 test("ranks evidenced second- and third-priority supply ahead when feedback enables it", () => {

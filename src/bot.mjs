@@ -10,8 +10,9 @@ import {
 import { botModules, syncTelegramMenu } from "./modules.mjs";
 import { chatId, sendMessage, telegram } from "./telegram.mjs";
 import { interpretMessage as interpretTelegramMessage } from "./core/message-interpreter.mjs";
-import { getNotice } from "./db.mjs";
+import { appliedNotices, getNotice, recentApplicationResults } from "./db.mjs";
 import { getJobPosting } from "./apps/jobs/db.mjs";
+import { housingStatusContextFromText } from "./report.mjs";
 
 function pendingReminderText() {
   try {
@@ -26,8 +27,12 @@ function recommendationSummary(row) {
   catch { return null; }
 }
 
-function hydratedMessageContext(messageId) {
-  const context = telegramMessageContext(messageId);
+function hydratedMessageContext(messageId, replyMessage = null) {
+  const context = telegramMessageContext(messageId) || housingStatusContextFromText(
+    replyMessage?.text || replyMessage?.caption,
+    appliedNotices(),
+    recentApplicationResults(20),
+  );
   if (!context?.items?.length) return context;
   return {
     ...context,

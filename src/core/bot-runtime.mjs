@@ -59,7 +59,9 @@ export function createBotRuntime({
       itemNumber: Number(text.match(/^\s*(\d{1,2})\s*번?/)?.[1] || 0) || null,
     };
 
-    const baseContext = routeMeta.replyToMessageId ? messageContext(routeMeta.replyToMessageId) : null;
+    const baseContext = routeMeta.replyToMessageId
+      ? messageContext(routeMeta.replyToMessageId, message.reply_to_message)
+      : null;
     const command = text.startsWith("/")
       ? text.slice(1).split(/\s/, 1)[0].split("@", 1)[0].toLowerCase()
       : null;
@@ -81,7 +83,11 @@ export function createBotRuntime({
         return;
       }
       if (semantic.route === "not_supported") {
-        await sendMessage(semantic.clarification || "요청을 확실히 이해하지 못했어요. 조금만 더 구체적으로 말해 주세요.");
+        await sendMessage(
+          semantic.clarification || "요청을 확실히 이해하지 못했어요. 조금만 더 구체적으로 말해 주세요.",
+          {},
+          baseContext ? { context: baseContext } : {},
+        );
         log("Telegram message needs clarification", { ...routeMeta, route: semantic.route });
         return;
       }

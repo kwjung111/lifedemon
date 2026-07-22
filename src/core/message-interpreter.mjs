@@ -176,6 +176,9 @@ export function normalizeMessageInterpretation(value, message, context = null, {
   let targetIndex = Number(value.target_index) || null;
   if (targetIndex && !indexes.has(targetIndex)) targetIndex = null;
   let route = value.route;
+  if (!targetIndex && targetRoutes.has(route) && indexes.size === 1) {
+    targetIndex = [...indexes][0];
+  }
   let domain = domains.includes(value.domain) ? value.domain : null;
   if (route === "feedback" && recommendationDomains.length) {
     domain = recommendationDomains.length === 1 ? recommendationDomains[0] : "mixed";
