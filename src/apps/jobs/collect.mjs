@@ -5,14 +5,15 @@ import { jobDiscoveryQueries, loadJobProfile } from "./profile.mjs";
 export async function collectJobs(options = {}) {
   const profile = loadJobProfile();
   const sources = await collectAllPublicJobSources({ queries: jobDiscoveryQueries(profile), ...options });
-  const summary = sources.map(({ source, jobs, error }) => {
+  const summary = sources.map(({ source, jobs, error, inactiveExternalIds = [] }) => {
     if (error) return { source, count: 0, error };
     const changes = jobs.map(upsertJobPostingWithStatus);
-    const deactivatedCount = markJobSourceComplete(source, changes.map(({ id }) => id));
+    const deactivatedCount = markJobSourceComplete(source, changes.map(({ id }) => id), inactiveExternalIds);
     return {
       source, count: changes.length,
       newCount: changes.filter(({ change }) => change === "new").length,
       changedCount: changes.filter(({ change }) => change === "changed").length,
+      officiallyClosedCount: inactiveExternalIds.length,
       deactivatedCount,
     };
   });

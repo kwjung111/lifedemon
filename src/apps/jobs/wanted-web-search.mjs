@@ -5,6 +5,7 @@ export { shouldFallbackToApi } from "../../core/codex-structured.mjs";
 
 const wantedHost = /^(?:www\.)?wanted\.co\.kr$/i;
 const devopsTerms = /dev\s*ops|devsecops|\bsre\b|site reliability|platform engineer|cloud engineer|infrastructure engineer|플랫폼\s*엔지니어|클라우드\s*엔지니어|인프라\s*엔지니어|kubernetes|terraform/i;
+const wantedApiBase = "https://www.wanted.co.kr/api/v4/jobs";
 
 export const wantedSearchSchema = {
   type: "object",
@@ -79,6 +80,62 @@ export function normalizeWantedSearchResult(payload) {
   return [...normalized.values()];
 }
 
+function kstDate(value = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(value);
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function runWorker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, runWorker));
+  return results;
+}
+
+export async function verifyWantedPostingStates(jobs, { officialFetch = globalThis.fetch, now = new Date() } = {}) {
+  if (typeof officialFetch !== "function") throw new Error("Wanted official API fetch is unavailable");
+  const today = kstDate(now);
+  const states = await mapWithConcurrency(jobs, 5, async (job) => {
+    const id = String(job.externalId || "");
+    if (!/^\d+$/.test(id)) throw new Error(`Wanted posting has an invalid id: ${id || "missing"}`);
+    const apiUrl = `${wantedApiBase}/${id}`;
+    const response = await officialFetch(apiUrl, {
+      headers: {
+        Accept: "application/json",
+        Referer: job.url,
+        "User-Agent": "Mozilla/5.0 (compatible; LifeDaemon/1.0; +https://github.com/kwjung111/lifedemon)",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response?.ok) throw new Error(`Wanted official API HTTP ${response?.status || "unknown"} for ${id}`);
+    const official = (await response.json())?.job;
+    if (!official || String(official.id) !== id || !clean(official.status)) {
+      throw new Error(`Wanted official API returned an invalid posting state for ${id}`);
+    }
+    const dueTime = clean(official.due_time) || null;
+    const expired = /^\d{4}-\d{2}-\d{2}$/.test(dueTime || "") && dueTime < today;
+    const open = clean(official.status).toLowerCase() === "active" && official.hidden !== true && !expired;
+    return { job, id, open, dueTime };
+  });
+  const active = states.filter((state) => state.open).map(({ job, dueTime }) => ({
+    ...job,
+    rawText: clean(`${job.rawText} ${dueTime ? `공식 마감일 ${dueTime}` : "공식 상태 상시채용"}`).slice(0, 60_000),
+  }));
+  Object.defineProperty(active, "inactiveExternalIds", {
+    value: states.filter((state) => !state.open).map((state) => state.id),
+    enumerable: false,
+  });
+  return active;
+}
+
 export async function gmailWantedCandidateUrls({ env = process.env, clientFactory = createGmailClient } = {}) {
   const config = gmailConfig(env);
   if (!config.configured) return { urls: [], error: null };
@@ -96,12 +153,16 @@ export async function gmailWantedCandidateUrls({ env = process.env, clientFactor
   }
 }
 
-export async function collectWantedWebSearch({ queries = [], maxResults = 40, env = process.env, now = new Date(), codexRunner = null, gmailCandidates = gmailWantedCandidateUrls } = {}) {
+export async function collectWantedWebSearch({
+  queries = [], maxResults = 40, env = process.env, now = new Date(), codexRunner = null,
+  gmailCandidates = gmailWantedCandidateUrls, officialFetch = globalThis.fetch,
+} = {}) {
   const gmail = await gmailCandidates({ env });
   const prompt = buildWantedSearchPrompt({ queries, candidateUrls: gmail.urls, maxResults, now });
   const payload = await runCodexStructuredWithFallback({
     prompt, schema: wantedSearchSchema, env, timeoutMs: 10 * 60_000, search: true,
     taskName: "Wanted live search", ...(codexRunner ? { codexRunner } : {}),
   });
-  return normalizeWantedSearchResult(payload).slice(0, Math.max(1, maxResults));
+  const candidates = normalizeWantedSearchResult(payload).slice(0, Math.max(1, maxResults));
+  return verifyWantedPostingStates(candidates, { officialFetch, now });
 }

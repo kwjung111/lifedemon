@@ -96,10 +96,28 @@ export function upsertJobPosting(job) {
   return upsertJobPostingWithStatus(job).id;
 }
 
-export function markJobSourceComplete(source, activeIds) {
+export function markJobSourceComplete(source, activeIds, inactiveExternalIds = []) {
   const ids = [...new Set(activeIds)];
-  if (!ids.length) return 0; // A zero-result scrape is not proof that every posting closed.
-  return jobDb.prepare(`UPDATE job_postings SET active=0 WHERE source=? AND id NOT IN (${ids.map(() => "?").join(",")})`).run(source, ...ids).changes;
+  const closed = [...new Set(inactiveExternalIds.map(String).filter(Boolean))];
+  let changes = 0;
+  jobDb.exec("BEGIN IMMEDIATE");
+  try {
+    // A zero-result scrape is not proof that every posting closed. Officially
+    // closed ids are still safe to deactivate one by one.
+    if (ids.length) {
+      changes += jobDb.prepare(`UPDATE job_postings SET active=0 WHERE source=? AND id NOT IN (${ids.map(() => "?").join(",")})`)
+        .run(source, ...ids).changes;
+    }
+    if (closed.length) {
+      changes += jobDb.prepare(`UPDATE job_postings SET active=0 WHERE source=? AND external_id IN (${closed.map(() => "?").join(",")})`)
+        .run(source, ...closed).changes;
+    }
+    jobDb.exec("COMMIT");
+    return changes;
+  } catch (error) {
+    jobDb.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function queueStaleWantedAssessments(maxAgeMs = 7 * 24 * 60 * 60_000) {
