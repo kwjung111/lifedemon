@@ -202,7 +202,11 @@ export async function collectAllPublicJobSources({ queries = [""], wantedCollect
     if (source.collector === "codex-web-search") {
       try {
         const jobs = await wantedCollector({ queries, maxResults: options.maxDetails || 40 });
-        results.push({ source: source.name, jobs, error: jobs.length ? null : "Codex live web search returned no verified Wanted DevOps postings" });
+        const inactiveExternalIds = [...(jobs.inactiveExternalIds || [])];
+        results.push({
+          source: source.name, jobs, inactiveExternalIds,
+          error: jobs.length || inactiveExternalIds.length ? null : "Codex live web search returned no verified Wanted DevOps postings",
+        });
       } catch (error) {
         results.push({ source: source.name, jobs: [], error: error.message });
       }
